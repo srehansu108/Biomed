@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     WEBAUTHN_ORIGIN: str = "http://localhost:3000"
     
     # CORS
-    ALLOWED_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:8000"]
+    ALLOWED_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:8000", "https://biomed-2nq9.onrender.com/"]
     
     # QR Code
     QR_CODE_EXPIRY_SECONDS: int = 300
