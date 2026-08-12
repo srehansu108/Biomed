@@ -1,7 +1,7 @@
 // src/services/api.js
 import axios from 'axios';
 
-const API_BASE_URL = 'https://biomed-2nq9.onrender.com/api';
+const API_BASE_URL = 'http://localhost:8000/api';
 
 // Create axios instance
 const api = axios.create({
@@ -32,7 +32,6 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       localStorage.removeItem('access_token');
       localStorage.removeItem('patient_id');
-      // Don't redirect here, let the component handle it
     }
     return Promise.reject(error);
   }
@@ -42,14 +41,22 @@ api.interceptors.response.use(
 export const authAPI = {
   register: (userData) => api.post('/auth/register', userData),
   login: (credentials) => api.post('/auth/login', credentials),
+  checkRegistrationStatus: (patientId) => api.post('/auth/check-registration-status', { patient_id: patientId }),
+  completeRegistration: (patientId) => api.post('/auth/complete-registration', { patient_id: patientId }),
 };
 
 // WebAuthn APIs
 export const webauthnAPI = {
   getRegistrationOptions: (email) => api.post('/webauthn/register/options', { email }),
-  verifyRegistration: (data) => api.post('/webauthn/register/verify', data),
+  verifyRegistration: (data) => api.post('/webauthn/register/verify', {
+    credential: data.credential,
+    email: data.email
+  }),
   getLoginOptions: (email) => api.post('/webauthn/login/options', { email }),
-  verifyLogin: (data) => api.post('/webauthn/login/verify', data),
+  verifyLogin: (data) => api.post('/webauthn/login/verify', {
+    credential: data.credential,
+    email: data.email
+  }),
 };
 
 // Patient APIs

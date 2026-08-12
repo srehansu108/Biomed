@@ -1,14 +1,30 @@
+# Core
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
 motor==3.6.0
+pymongo==4.9.2
+
+# Security - Use a version compatible with webauthn
 python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
+passlib==1.7.4
+bcrypt==4.0.1
 python-multipart==0.0.20
+email-validator==2.1.0
+cryptography>=43.0.3  # ← Changed from a specific version to a compatible range
+
+# Settings
 pydantic==2.10.4
 pydantic-settings==2.7.0
 python-dotenv==1.0.1
+
+# WebAuthn
 webauthn==2.3.0
+
+# Utilities
 qrcode==7.4.2
-pillow==11.0.0
+pillow==10.4.0
 python-dateutil==2.9.0.post0
-email-validator==2.1.0
+
+# Production specific
+gunicorn==21.2.0
+python-json-logger==2.0.7

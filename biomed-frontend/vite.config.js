@@ -11,7 +11,7 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': {
-        target: 'https://biomed-2nq9.onrender.com',
+        target: 'http://localhost:8000',
         changeOrigin: true,
       }
     }

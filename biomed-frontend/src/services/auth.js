@@ -40,6 +40,8 @@ export const authAPI = {
   getToken: getToken,
   getPatientId: getPatientId,
   getCurrentUser: getCurrentUser,
+  checkRegistrationStatus: (patientId) => api.post('/auth/check-registration-status', { patient_id: patientId }),
+  completeRegistration: (patientId) => api.post('/auth/complete-registration', { patient_id: patientId }),
 };
 
 // Default export

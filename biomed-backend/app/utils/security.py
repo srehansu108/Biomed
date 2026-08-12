@@ -3,16 +3,40 @@ from typing import Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from ..config import settings
+import bcrypt
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Configure bcrypt with explicit settings
+pwd_context = CryptContext(
+    schemes=["bcrypt"],
+    deprecated="auto",
+    bcrypt__rounds=12,  # Default rounds
+)
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a plain password against a hashed password"""
-    return pwd_context.verify(plain_password, hashed_password)
+    # Truncate password to 72 bytes if needed (bcrypt limitation)
+    if len(plain_password.encode('utf-8')) > 72:
+        plain_password = plain_password[:72]
+    
+    try:
+        return pwd_context.verify(plain_password, hashed_password)
+    except ValueError as e:
+        print(f"Password verification error: {e}")
+        return False
 
 def get_password_hash(password: str) -> str:
-    """Hash a password"""
-    return pwd_context.hash(password)
+    """Hash a password with bcrypt"""
+    # Truncate password to 72 bytes if needed
+    if len(password.encode('utf-8')) > 72:
+        password = password[:72]
+    
+    try:
+        return pwd_context.hash(password)
+    except ValueError as e:
+        print(f"Password hashing error: {e}")
+        # Fallback to direct bcrypt if passlib fails
+        salt = bcrypt.gensalt(rounds=12)
+        return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """Create a JWT access token"""

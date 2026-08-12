@@ -1,34 +1,51 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from contextlib import asynccontextmanager
+import logging
+import time
 from .database.mongodb import database
 from .config import settings
 from .routes import auth, patients, medicines, prescriptions, sales, webauthn
 
+# Configure logging
+logging.basicConfig(
+    level=settings.LOG_LEVEL if hasattr(settings, 'LOG_LEVEL') else "INFO",
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    print("🚀 Starting BioMed Pharmacy API...")
+    logger.info("🚀 Starting BioMed Pharmacy API...")
+    logger.info(f"Environment: {settings.ENVIRONMENT if hasattr(settings, 'ENVIRONMENT') else 'development'}")
+    
     connected = await database.connect()
     if not connected:
-        print("⚠️ Warning: Could not connect to MongoDB")
+        logger.error("❌ Failed to connect to MongoDB!")
+        raise RuntimeError("Database connection failed")
+    
     yield
     # Shutdown
     await database.disconnect()
-    print("🛑 BioMed Pharmacy API shut down")
+    logger.info("🛑 BioMed Pharmacy API shut down")
 
 # Create app
 app = FastAPI(
     title="BioMed Pharmacy API",
     description="Biometric-Based Smart Medicine Store Management System",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
+    docs_url="/docs",
+    redoc_url="/redoc"
 )
 
-# CORS middleware
+# CORS middleware - Allow all origins for development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -55,26 +72,21 @@ async def root():
 async def health_check():
     """Health check endpoint"""
     try:
-        # Check database connection
         if database.db is None:
             return {
                 "status": "unhealthy",
-                "database": "disconnected",
-                "message": "Database not initialized"
+                "database": "disconnected"
             }
         
-        # Ping database
         await database.db.command("ping")
-        
         return {
             "status": "healthy",
-            "database": "connected",
-            "message": "All systems operational"
+            "database": "connected"
         }
     except Exception as e:
+        logger.error(f"Health check failed: {e}")
         return {
             "status": "unhealthy",
             "database": "disconnected",
-            "error": str(e),
-            "message": "Database connection failed"
+            "error": str(e)
         }

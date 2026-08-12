@@ -10,17 +10,40 @@ const Login = () => {
   const [error, setError] = useState('')
 
   const handleSubmit = async (e) => {
-    e.preventDefault()
-    setError('')
+  e.preventDefault();
+  setError('');
+  setLoading(true);
+
+  try {
+    const response = await authAPI.login(formData);
+    const { access_token, patient_id, registration_complete } = response.data;
     
-    try {
-      // TODO: Implement actual login API call
-      console.log('Login attempt:', formData)
-      navigate('/customer-dashboard')
-    } catch (err) {
-      setError('Invalid credentials. Please try again.')
+    // Store tokens
+    localStorage.setItem('access_token', access_token);
+    localStorage.setItem('patient_id', patient_id);
+    
+    // Check if registration is complete
+    const statusResponse = await authAPI.checkRegistrationStatus(patient_id);
+    
+    if (!statusResponse.data.registration_complete) {
+      // User hasn't completed biometric setup - redirect to biometric registration
+      navigate('/biometric-register', { 
+        state: { 
+          email: formData.email,
+          patient_id: patient_id,
+          isMandatory: true
+        } 
+      });
+    } else {
+      // Normal login flow
+      navigate('/customer-dashboard');
     }
+  } catch (err) {
+    setError(err.response?.data?.detail || 'Login failed. Please try again.');
+  } finally {
+    setLoading(false);
   }
+};
 
   return (
     <div className="max-w-md mx-auto">

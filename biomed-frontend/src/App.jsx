@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Header from './components/Layout/Header';
 import Footer from './components/Layout/Footer';
+import ProtectedRoute from './components/ProtectedRoute';
 
 // Pages
 import Home from './pages/Home';
@@ -24,8 +25,20 @@ function App() {
             <Route path="/register" element={<Register />} />
             <Route path="/biometric-register" element={<BiometricRegistration />} />
             <Route path="/biometric-login" element={<BiometricLogin />} />
-            <Route path="/customer-dashboard" element={<CustomerDashboard />} />
-            <Route path="/pharmacist-dashboard" element={<PharmacistDashboard />} />
+            
+            {/* Protected Routes - Biometric MANDATORY */}
+            <Route path="/customer-dashboard" element={
+              <ProtectedRoute requireBiometric={true}>
+                <CustomerDashboard />
+              </ProtectedRoute>
+            } />
+            
+            <Route path="/pharmacist-dashboard" element={
+              <ProtectedRoute requireBiometric={true}>
+                <PharmacistDashboard />
+              </ProtectedRoute>
+            } />
+            
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
         </main>
