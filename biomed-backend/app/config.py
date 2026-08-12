@@ -3,11 +3,11 @@ from typing import List
 
 class Settings(BaseSettings):
     # Database
-    MONGODB_URL: str = "mongodb://localhost:27017"
-    DATABASE_NAME: str = "biomed_pharmacy"
+    MONGODB_URL: str = "mongodb://srehansududulbarik_db_user:UY7N84wY7baPLvp1@ac-e4jucp9-shard-00-00.ilq9ipb.mongodb.net:27017,ac-e4jucp9-shard-00-01.ilq9ipb.mongodb.net:27017,ac-e4jucp9-shard-00-02.ilq9ipb.mongodb.net:27017/?ssl=true&replicaSet=atlas-zss8t8-shard-0&authSource=admin&appName=Cluster0"
+    DATABASE_NAME: str = "Biomed"
     
     # Security
-    SECRET_KEY: str = "your-secret-key-change-in-production"
+    SECRET_KEY: str = "temp1234"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     
