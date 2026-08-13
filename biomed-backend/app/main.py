@@ -1,14 +1,12 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from contextlib import asynccontextmanager
 import logging
 import time
 from .database.mongodb import database
 from .config import settings
-from .routes import auth, patients, medicines, prescriptions, sales, webauthn
-from .routes import patient_medicines
+from .routes import auth, patients, medicines, prescriptions, sales, webauthn, patient_medicines
 
 # Configure logging
 logging.basicConfig(
@@ -29,7 +27,7 @@ async def lifespan(app: FastAPI):
         logger.error("❌ Failed to connect to MongoDB!")
         raise RuntimeError("Database connection failed")
     
-    # ✅ Verify WebAuthn configuration
+    # Verify WebAuthn configuration
     try:
         from .routes.webauthn import validate_webauthn_config
         validate_webauthn_config()
@@ -55,16 +53,10 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-# ✅ Trusted Host Middleware - Add for production
-# app.add_middleware(
-#     TrustedHostMiddleware,
-#     allowed_hosts=["localhost", "127.0.0.1", "yourdomain.com"]
-# )
-
-# ✅ GZip Middleware - Compress responses
+# GZip Middleware - Compress responses
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
-# ✅ Request Logging Middleware
+# Request Logging Middleware
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     """Log all incoming requests"""
@@ -87,10 +79,10 @@ async def log_requests(request: Request, call_next):
     response.headers["X-Process-Time"] = str(process_time)
     return response
 
-# CORS middleware - Allow all origins for development
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure this properly in production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -103,7 +95,7 @@ app.include_router(patients.router, prefix="/api")
 app.include_router(medicines.router, prefix="/api")
 app.include_router(prescriptions.router, prefix="/api")
 app.include_router(sales.router, prefix="/api")
-app.include_router(patient_medicines.router, prefix="/api")
+app.include_router(patient_medicines.router, prefix="/api")  # ✅ New route
 
 @app.get("/")
 async def root():
@@ -119,7 +111,6 @@ async def root():
 async def health_check():
     """Health check endpoint"""
     try:
-        # Check database
         db_status = await database.ping()
         
         return {
@@ -136,7 +127,7 @@ async def health_check():
             "timestamp": time.time()
         }
 
-# ✅ Error handler for 404
+# Error handler for 404
 @app.exception_handler(404)
 async def not_found_handler(request: Request, exc):
     from fastapi.responses import JSONResponse
@@ -149,7 +140,7 @@ async def not_found_handler(request: Request, exc):
         }
     )
 
-# ✅ Global exception handler
+# Global exception handler
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc):
     logger.error(f"Unhandled exception: {exc}", exc_info=True)

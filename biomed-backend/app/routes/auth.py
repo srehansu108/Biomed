@@ -43,7 +43,8 @@ async def register_user(user_data: UserRegister):
         address=Address(**user_data.address),
         allergies=[],
         medical_notes=None,
-        has_biometric=False
+        has_biometric=False,
+        role="patient"
     )
     
     # Insert into database

@@ -1,40 +1,41 @@
 from fastapi import APIRouter, HTTPException
-from typing import List, Optional
+from typing import Optional  # ✅ Add this import
 from datetime import datetime
 from ..database.mongodb import database
+from ..schemas.patient_medicine import PatientMedicineCreate, PatientMedicineUpdate
 from bson import ObjectId
 
 router = APIRouter(prefix="/patient-medicines", tags=["Patient Medicines"])
 
 @router.post("/")
-async def assign_medicine_to_patient(data: dict):
+async def assign_medicine_to_patient(data: PatientMedicineCreate):
     """Admin assigns/prescribes medicine to a patient"""
     
     # Check if patient exists
-    patient = await database.db.patients.find_one({"patient_id": data.get("patient_id")})
+    patient = await database.db.patients.find_one({"patient_id": data.patient_id})
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
     
     # Check if medicine exists
-    medicine = await database.db.medicines.find_one({"medicine_id": data.get("medicine_id")})
+    medicine = await database.db.medicines.find_one({"medicine_id": data.medicine_id})
     if not medicine:
         raise HTTPException(status_code=404, detail="Medicine not found")
     
     # Create patient medicine record
     patient_medicine = {
-        "patient_id": data["patient_id"],
-        "medicine_id": data["medicine_id"],
-        "medicine_name": data["medicine_name"],
-        "category": data["category"],
-        "dosage": data.get("dosage", ""),
-        "quantity": data.get("quantity", 1),
-        "remaining_quantity": data.get("quantity", 1),
-        "price": data.get("price", 0),
+        "patient_id": data.patient_id,
+        "medicine_id": data.medicine_id,
+        "medicine_name": data.medicine_name,
+        "category": data.category,
+        "dosage": data.dosage,
+        "quantity": data.quantity,
+        "remaining_quantity": data.quantity,
+        "price": data.price,
         "status": "active",
-        "prescribed_by": data.get("prescribed_by", "Admin"),
+        "prescribed_by": data.prescribed_by,
         "prescribed_date": datetime.now(),
-        "expiry_date": data.get("expiry_date"),
-        "notes": data.get("notes", ""),
+        "expiry_date": data.expiry_date,
+        "notes": data.notes,
         "requires_prescription": True,
         "created_at": datetime.now(),
         "updated_at": datetime.now()
@@ -56,6 +57,42 @@ async def get_patient_medicines(patient_id: str):
         med["_id"] = str(med["_id"])
     
     return medicines
+
+@router.get("/{patient_medicine_id}")
+async def get_patient_medicine(patient_medicine_id: str):
+    """Get a specific patient medicine record"""
+    
+    medicine = await database.db.patient_medicines.find_one({
+        "_id": ObjectId(patient_medicine_id)
+    })
+    if not medicine:
+        raise HTTPException(status_code=404, detail="Patient medicine not found")
+    medicine["_id"] = str(medicine["_id"])
+    return medicine
+
+@router.put("/{patient_medicine_id}")
+async def update_patient_medicine(
+    patient_medicine_id: str,
+    data: PatientMedicineUpdate
+):
+    """Update patient medicine details"""
+    
+    update_data = data.dict(exclude_unset=True)
+    update_data["updated_at"] = datetime.now()
+    
+    result = await database.db.patient_medicines.update_one(
+        {"_id": ObjectId(patient_medicine_id)},
+        {"$set": update_data}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Patient medicine not found")
+    
+    updated = await database.db.patient_medicines.find_one({
+        "_id": ObjectId(patient_medicine_id)
+    })
+    updated["_id"] = str(updated["_id"])
+    return updated
 
 @router.patch("/{patient_medicine_id}/consume")
 async def consume_medicine(patient_medicine_id: str, quantity: int = 1):
@@ -100,3 +137,23 @@ async def remove_patient_medicine(patient_medicine_id: str):
         raise HTTPException(status_code=404, detail="Patient medicine not found")
     
     return {"message": "Medicine removed from patient's list"}
+
+@router.get("/")
+async def get_all_assigned_medicines(
+    skip: int = 0,
+    limit: int = 100,
+    patient_id: Optional[str] = None  # ✅ Now Optional is defined
+):
+    """Get all assigned medicines (admin view)"""
+    
+    query = {}
+    if patient_id:
+        query["patient_id"] = patient_id
+    
+    cursor = database.db.patient_medicines.find(query).skip(skip).limit(limit).sort("created_at", -1)
+    medicines = await cursor.to_list(length=limit)
+    
+    for med in medicines:
+        med["_id"] = str(med["_id"])
+    
+    return medicines

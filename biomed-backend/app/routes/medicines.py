@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException
 from typing import List, Optional
 from datetime import datetime
 from ..database.mongodb import database
@@ -12,15 +12,10 @@ async def get_all_medicines(
     skip: int = 0, 
     limit: int = 100,
     category: Optional[str] = None,
-    search: Optional[str] = None,
-    available_only: bool = False
+    search: Optional[str] = None
 ):
     """Get all medicines with optional filters"""
     query = {}
-    
-    if available_only:
-        query["is_available"] = True
-        query["quantity"] = {"$gt": 0}
     
     if category:
         query["category"] = category
