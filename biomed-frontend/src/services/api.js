@@ -79,27 +79,4 @@ export const salesAPI = {
   getToday: () => api.get('/sales/today'),
 };
 
-// Add these to your existing api.js
-
-// Patient APIs - Add getAll for admin
-export const patientAPI = {
-  getAll: () => api.get('/patients'),
-  getById: (id) => api.get(`/patients/${id}`),
-  getPrescriptions: (id) => api.get(`/patients/${id}/prescriptions`),
-  getStats: () => api.get('/patients/stats/overview'),
-};
-
-// Medicine APIs - Add categories
-export const medicineAPI = {
-  getAll: () => api.get('/medicines'),
-  getAvailable: () => api.get('/medicines/available'),
-  getById: (id) => api.get(`/medicines/${id}`),
-  create: (data) => api.post('/medicines', data),
-  update: (id, data) => api.put(`/medicines/${id}`, data),
-  delete: (id) => api.delete(`/medicines/${id}`),
-  updateStock: (id, quantity) => api.patch(`/medicines/${id}/stock`, { quantity }),
-  getLowStock: (threshold = 50) => api.get(`/medicines/low-stock/${threshold}`),
-  getCategories: () => api.get('/medicines/categories'),
-};
-
 export default api;
