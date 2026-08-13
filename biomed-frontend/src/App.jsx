@@ -1,11 +1,11 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import Register from './components/Register';
-import Login from './components/Login';
-import BiometricRegistration from './components/BiometricRegistration';
-import BiometricLogin from './components/BiometricLogin';
-import CustomerDashboard from './components/CustomerDashboard';
-import AdminDashboard from './components/AdminDashboard';
+import Register from './pages/Register';
+import Login from './pages/Login';
+import BiometricRegistration from './pages/BiometricRegistration';
+import BiometricLogin from './pages/BiometricLogin';
+import CustomerDashboard from './pages/CustomerDashboard';
+import AdminDashboard from './pages/AdminDashboard';
 
 // Protected Route Component
 const ProtectedRoute = ({ children, adminOnly = false }) => {
