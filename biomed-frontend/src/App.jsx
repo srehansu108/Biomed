@@ -40,9 +40,7 @@ function App() {
         } />
         
         <Route path="/admin" element={
-          <ProtectedRoute adminOnly={true}>
             <AdminDashboard />
-          </ProtectedRoute>
         } />
       </Routes>
     </BrowserRouter>
