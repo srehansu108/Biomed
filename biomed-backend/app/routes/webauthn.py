@@ -21,12 +21,12 @@ import json
 import logging
 from datetime import datetime
 
-# ✅ ADDED: Logging setup
+# ✅ Logging setup
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/webauthn", tags=["WebAuthn"])
 
-# ✅ IMPROVED: Base64 handling functions
+# ✅ Base64 handling functions
 def to_base64url(data: bytes) -> str:
     """Convert bytes to base64url string without padding"""
     if not data:
@@ -43,6 +43,16 @@ def from_base64url(data: str) -> bytes:
         data += "=" * (4 - padding)
     return base64.urlsafe_b64decode(data)
 
+# ✅ FIX: Normalize origin - removes trailing slash
+def normalize_origin(origin: str) -> str:
+    """Remove trailing slash from origin to match browser behavior"""
+    if not origin:
+        return origin
+    # Remove trailing slash
+    while origin.endswith('/'):
+        origin = origin[:-1]
+    return origin
+
 class CustomJSONEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, bytes):
@@ -51,7 +61,7 @@ class CustomJSONEncoder(json.JSONEncoder):
             return to_base64url(bytes(obj))
         return super().default(obj)
 
-# ✅ ADDED: Configuration validation
+# ✅ Configuration validation
 def validate_webauthn_config():
     """Validate WebAuthn configuration"""
     required = ["WEBAUTHN_RP_ID", "WEBAUTHN_RP_NAME", "WEBAUTHN_ORIGIN"]
@@ -62,14 +72,14 @@ def validate_webauthn_config():
 # Validate config when module loads
 validate_webauthn_config()
 
-# ✅ ADDED: Health check endpoint
+# ✅ Health check endpoint
 @router.get("/health")
 async def health_check():
     """Check WebAuthn service health"""
     return {
         "status": "healthy",
         "rp_id": settings.WEBAUTHN_RP_ID,
-        "origin": settings.WEBAUTHN_ORIGIN
+        "origin": normalize_origin(settings.WEBAUTHN_ORIGIN)  # ✅ Normalized
     }
 
 @router.post("/register/options")
@@ -201,12 +211,17 @@ async def verify_registration(data: WebAuthnRegistrationVerify):
         credential_json = json.dumps(credential_data)
         credential = parse_registration_credential_json(credential_json)
         
+        # ✅ FIX: Normalize origin - remove trailing slash
+        expected_origin = normalize_origin(settings.WEBAUTHN_ORIGIN)
+        logger.info(f"Using RP ID: {settings.WEBAUTHN_RP_ID}")
+        logger.info(f"Using Origin (normalized): {expected_origin}")
+        
         # Verify the registration response
         verification = verify_registration_response(
             credential=credential,
             expected_challenge=challenge_doc["challenge"],
             expected_rp_id=settings.WEBAUTHN_RP_ID,
-            expected_origin=settings.WEBAUTHN_ORIGIN,
+            expected_origin=expected_origin,  # ✅ Use normalized
         )
         
     except Exception as e:
@@ -362,11 +377,16 @@ async def verify_login(data: WebAuthnLoginVerify):
         credential_json = json.dumps(credential_data)
         auth_credential = parse_authentication_credential_json(credential_json)
         
+        # ✅ FIX: Normalize origin - remove trailing slash
+        expected_origin = normalize_origin(settings.WEBAUTHN_ORIGIN)
+        logger.info(f"Using RP ID: {settings.WEBAUTHN_RP_ID}")
+        logger.info(f"Using Origin (normalized): {expected_origin}")
+        
         verification = verify_authentication_response(
             credential=auth_credential,
             expected_challenge=challenge_doc["challenge"],
             expected_rp_id=settings.WEBAUTHN_RP_ID,
-            expected_origin=settings.WEBAUTHN_ORIGIN,
+            expected_origin=expected_origin,  # ✅ Use normalized
             credential_public_key=credential["public_key"],
             credential_current_sign_count=credential["sign_count"]
         )
@@ -402,7 +422,7 @@ async def verify_login(data: WebAuthnLoginVerify):
         registration_complete=True
     )
 
-# ✅ ADDED: Check registration status endpoint
+# ✅ Check registration status endpoint
 @router.post("/check-status")
 async def check_registration_status(data: dict):
     """Check if user has completed biometric registration"""
@@ -420,7 +440,7 @@ async def check_registration_status(data: dict):
         "patient_id": patient_id
     }
 
-# ✅ ADDED: Remove biometric endpoint
+# ✅ Remove biometric endpoint
 @router.delete("/credential/{patient_id}")
 async def remove_biometric(patient_id: str):
     """Allow user to remove biometric (with verification)"""
@@ -441,7 +461,7 @@ async def remove_biometric(patient_id: str):
     
     return {"message": "Biometric removed successfully"}
 
-# ✅ ADDED: Get credential info endpoint
+# ✅ Get credential info endpoint
 @router.get("/credential/{patient_id}")
 async def get_credential_info(patient_id: str):
     """Get credential information for a patient"""
