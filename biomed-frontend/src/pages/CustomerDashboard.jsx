@@ -8,8 +8,6 @@ const CustomerDashboard = () => {
   const [patient, setPatient] = useState(null);
   const [prescriptions, setPrescriptions] = useState([]);
   const [purchases, setPurchases] = useState([]);
-  const [recentPrescriptions, setRecentPrescriptions] = useState([]);
-  const [recentPurchases, setRecentPurchases] = useState([]);
   const [stats, setStats] = useState({
     totalPrescriptions: 0,
     totalPurchases: 0,
@@ -55,10 +53,6 @@ const CustomerDashboard = () => {
         activePrescriptions: activePrescriptions.length,
         totalSpent: totalSpent
       });
-
-      // Get recent items (last 3)
-      setRecentPrescriptions(allPrescriptions.slice(0, 3));
-      setRecentPurchases(allPurchases.slice(0, 3));
 
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
@@ -153,12 +147,6 @@ const CustomerDashboard = () => {
                   ✅ Biometric Enabled
                 </span>
               )}
-              <button
-                onClick={() => navigate('/biometric-login')}
-                className="bg-white text-primary-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-50 transition-colors"
-              >
-                🔐 Re-authenticate
-              </button>
             </div>
           </div>
         </div>
@@ -259,11 +247,11 @@ const CustomerDashboard = () => {
               </button>
             </div>
             
-            {recentPrescriptions.length === 0 ? (
+            {prescriptions.length === 0 ? (
               <p className="text-gray-500 text-center py-8">No prescriptions found</p>
             ) : (
               <div className="space-y-4">
-                {recentPrescriptions.map((prescription, index) => (
+                {prescriptions.slice(0, 3).map((prescription, index) => (
                   <div key={index} className="border-l-4 border-primary-500 pl-4 py-2">
                     <div className="flex justify-between items-start">
                       <div>
@@ -301,11 +289,11 @@ const CustomerDashboard = () => {
               </button>
             </div>
             
-            {recentPurchases.length === 0 ? (
+            {purchases.length === 0 ? (
               <p className="text-gray-500 text-center py-8">No purchase history</p>
             ) : (
               <div className="space-y-4">
-                {recentPurchases.map((purchase, index) => (
+                {purchases.slice(0, 3).map((purchase, index) => (
                   <div key={index} className="flex justify-between items-center border-b border-gray-100 pb-3 last:border-0">
                     <div>
                       <p className="font-medium text-gray-900">

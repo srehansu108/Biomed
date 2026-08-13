@@ -1,11 +1,11 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import Register from './pages/Register';
-import Login from './pages/Login';
-import BiometricRegistration from './pages/BiometricRegistration';
-import BiometricLogin from './pages/BiometricLogin';
-import CustomerDashboard from './pages/CustomerDashboard';
-import AdminDashboard from './pages/AdminDashboard';
+import Register from './components/Register';
+import Login from './components/Login';
+import BiometricRegistration from './components/BiometricRegistration';
+import BiometricLogin from './components/BiometricLogin';
+import CustomerDashboard from './components/CustomerDashboard';
+import AdminDashboard from './components/AdminDashboard';
 
 // Protected Route Component
 const ProtectedRoute = ({ children, adminOnly = false }) => {
@@ -27,21 +27,48 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
+        {/* Public Routes */}
         <Route path="/" element={<Navigate to="/login" />} />
         <Route path="/register" element={<Register />} />
         <Route path="/login" element={<Login />} />
         <Route path="/biometric-register" element={<BiometricRegistration />} />
         <Route path="/biometric-login" element={<BiometricLogin />} />
         
-        <Route path="/dashboard" element={
-          <ProtectedRoute>
-            <CustomerDashboard />
-          </ProtectedRoute>
-        } />
+        {/* Protected Routes */}
+        <Route 
+          path="/dashboard" 
+          element={
+            <ProtectedRoute>
+              <CustomerDashboard />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/customer-dashboard" 
+          element={
+            <ProtectedRoute>
+              <CustomerDashboard />
+            </ProtectedRoute>
+          } 
+        />
         
-        <Route path="/admin" element={
-            <AdminDashboard />
-        } />
+        {/* Admin Routes */}
+        <Route 
+          path="/admin" 
+          element={
+            <ProtectedRoute adminOnly={true}>
+              <AdminDashboard />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/admin-dashboard" 
+          element={
+            <ProtectedRoute adminOnly={true}>
+              <AdminDashboard />
+            </ProtectedRoute>
+          } 
+        />
       </Routes>
     </BrowserRouter>
   );

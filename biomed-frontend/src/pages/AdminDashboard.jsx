@@ -21,6 +21,7 @@ const AdminDashboard = () => {
   });
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
+  const [categories, setCategories] = useState([]);
 
   useEffect(() => {
     fetchMedicines();
@@ -31,6 +32,8 @@ const AdminDashboard = () => {
       setLoading(true);
       const response = await medicineAPI.getAll();
       setMedicines(response.data);
+      const cats = [...new Set(response.data.map(m => m.category))];
+      setCategories(cats);
     } catch (error) {
       console.error('Error fetching medicines:', error);
     } finally {
@@ -83,7 +86,7 @@ const AdminDashboard = () => {
       price: medicine.price,
       manufacturer: medicine.manufacturer,
       batch_number: medicine.batch_number,
-      expiry_date: medicine.expiry_date.split('T')[0],
+      expiry_date: medicine.expiry_date?.split('T')[0] || '',
       requires_prescription: medicine.requires_prescription || false
     });
     setShowAddForm(true);
@@ -100,6 +103,13 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('patient_id');
+    localStorage.removeItem('user_role');
+    navigate('/login');
+  };
+
   const filteredMedicines = medicines.filter(medicine => {
     const matchesSearch = medicine.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          medicine.manufacturer.toLowerCase().includes(searchTerm.toLowerCase());
@@ -107,11 +117,29 @@ const AdminDashboard = () => {
     return matchesSearch && matchesCategory;
   });
 
-  const categories = [...new Set(medicines.map(m => m.category))];
-
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gray-50">
+      {/* Navigation */}
+      <nav className="bg-white shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between h-16">
+            <div className="flex items-center">
+              <span className="text-2xl font-bold text-primary-600">🏥 BioMed</span>
+              <span className="ml-2 text-sm text-gray-500">Admin Panel</span>
+            </div>
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={handleLogout}
+                className="text-sm text-gray-500 hover:text-red-600 transition-colors"
+              >
+                Logout
+              </button>
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
           <div>
@@ -346,10 +374,10 @@ const AdminDashboard = () => {
                           {medicine.quantity <= 50 && ' ⚠️'}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-900">₹{medicine.price.toFixed(2)}</td>
+                      <td className="px-6 py-4 text-sm text-gray-900">₹{medicine.price?.toFixed(2) || '0.00'}</td>
                       <td className="px-6 py-4 text-sm text-gray-600">{medicine.batch_number}</td>
                       <td className="px-6 py-4 text-sm text-gray-600">
-                        {new Date(medicine.expiry_date).toLocaleDateString()}
+                        {medicine.expiry_date ? new Date(medicine.expiry_date).toLocaleDateString() : 'N/A'}
                       </td>
                       <td className="px-6 py-4 text-sm">
                         <button
