@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from typing import List, Optional
 from datetime import datetime
 from ..database.mongodb import database
@@ -12,10 +12,15 @@ async def get_all_medicines(
     skip: int = 0, 
     limit: int = 100,
     category: Optional[str] = None,
-    search: Optional[str] = None
+    search: Optional[str] = None,
+    available_only: bool = False
 ):
     """Get all medicines with optional filters"""
     query = {}
+    
+    if available_only:
+        query["is_available"] = True
+        query["quantity"] = {"$gt": 0}
     
     if category:
         query["category"] = category
@@ -34,7 +39,10 @@ async def get_all_medicines(
 @router.get("/available")
 async def get_available_medicines():
     """Get all available medicines (in stock)"""
-    cursor = database.db.medicines.find({"is_available": True, "quantity": {"$gt": 0}})
+    cursor = database.db.medicines.find({
+        "is_available": True, 
+        "quantity": {"$gt": 0}
+    }).sort("name", 1)
     medicines = await cursor.to_list(length=100)
     return medicines
 
@@ -112,3 +120,9 @@ async def get_low_stock_medicines(threshold: int = 50):
     cursor = database.db.medicines.find({"quantity": {"$lte": threshold}})
     medicines = await cursor.to_list(length=100)
     return medicines
+
+@router.get("/categories")
+async def get_categories():
+    """Get all unique categories"""
+    categories = await database.db.medicines.distinct("category")
+    return {"categories": categories}

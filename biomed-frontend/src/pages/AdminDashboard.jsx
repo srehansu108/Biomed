@@ -1,13 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { medicineAPI } from '../services/api';
+import { medicineAPI, patientAPI } from '../services/api';
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState('medicines');
   const [medicines, setMedicines] = useState([]);
+  const [patients, setPatients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingMedicine, setEditingMedicine] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('');
+  const [categories, setCategories] = useState([]);
   const [formData, setFormData] = useState({
     name: '',
     category: '',
@@ -19,23 +24,26 @@ const AdminDashboard = () => {
     expiry_date: '',
     requires_prescription: false
   });
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('');
-  const [categories, setCategories] = useState([]);
 
   useEffect(() => {
-    fetchMedicines();
-  }, []);
+    fetchData();
+  }, [activeTab]);
 
-  const fetchMedicines = async () => {
+  const fetchData = async () => {
     try {
       setLoading(true);
-      const response = await medicineAPI.getAll();
-      setMedicines(response.data);
-      const cats = [...new Set(response.data.map(m => m.category))];
-      setCategories(cats);
+      
+      if (activeTab === 'medicines') {
+        const response = await medicineAPI.getAll();
+        setMedicines(response.data);
+        const cats = [...new Set(response.data.map(m => m.category))];
+        setCategories(cats);
+      } else if (activeTab === 'patients') {
+        const response = await patientAPI.getAll();
+        setPatients(response.data);
+      }
     } catch (error) {
-      console.error('Error fetching medicines:', error);
+      console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
     }
@@ -70,7 +78,7 @@ const AdminDashboard = () => {
         expiry_date: '',
         requires_prescription: false
       });
-      fetchMedicines();
+      fetchData();
     } catch (error) {
       console.error('Error saving medicine:', error);
     }
@@ -96,7 +104,7 @@ const AdminDashboard = () => {
     if (window.confirm('Are you sure you want to delete this medicine?')) {
       try {
         await medicineAPI.delete(medicineId);
-        fetchMedicines();
+        fetchData();
       } catch (error) {
         console.error('Error deleting medicine:', error);
       }
@@ -144,65 +152,221 @@ const AdminDashboard = () => {
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
-            <p className="text-gray-600">Manage your medicine inventory</p>
+            <p className="text-gray-600">Manage medicines and view patients</p>
           </div>
-          <button
-            onClick={() => {
-              setEditingMedicine(null);
-              setFormData({
-                name: '',
-                category: '',
-                description: '',
-                quantity: 0,
-                price: 0,
-                manufacturer: '',
-                batch_number: '',
-                expiry_date: '',
-                requires_prescription: false
-              });
-              setShowAddForm(true);
-            }}
-            className="btn-primary px-6 py-2 rounded-lg"
-          >
-            + Add Medicine
-          </button>
-        </div>
-
-        {/* Search and Filter */}
-        <div className="bg-white rounded-lg shadow p-4 mb-6">
-          <div className="flex flex-wrap gap-4">
-            <div className="flex-1 min-w-[200px]">
-              <input
-                type="text"
-                placeholder="Search medicines..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="input-field w-full"
-              />
-            </div>
-            <div className="min-w-[150px]">
-              <select
-                value={selectedCategory}
-                onChange={(e) => setSelectedCategory(e.target.value)}
-                className="input-field w-full"
-              >
-                <option value="">All Categories</option>
-                {categories.map(category => (
-                  <option key={category} value={category}>{category}</option>
-                ))}
-              </select>
-            </div>
+          {activeTab === 'medicines' && (
             <button
               onClick={() => {
-                setSearchTerm('');
-                setSelectedCategory('');
+                setEditingMedicine(null);
+                setFormData({
+                  name: '',
+                  category: '',
+                  description: '',
+                  quantity: 0,
+                  price: 0,
+                  manufacturer: '',
+                  batch_number: '',
+                  expiry_date: '',
+                  requires_prescription: false
+                });
+                setShowAddForm(true);
               }}
-              className="btn-secondary px-4 py-2 rounded-lg"
+              className="btn-primary px-6 py-2 rounded-lg"
             >
-              Clear Filters
+              + Add Medicine
             </button>
-          </div>
+          )}
         </div>
+
+        {/* Tabs */}
+        <div className="border-b border-gray-200 mb-6">
+          <nav className="-mb-px flex space-x-8">
+            <button
+              onClick={() => setActiveTab('medicines')}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'medicines'
+                  ? 'border-primary-500 text-primary-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              💊 Medicines
+            </button>
+            <button
+              onClick={() => setActiveTab('patients')}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'patients'
+                  ? 'border-primary-500 text-primary-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              👥 Patients
+            </button>
+          </nav>
+        </div>
+
+        {/* Medicines Tab */}
+        {activeTab === 'medicines' && (
+          <>
+            {/* Search and Filter */}
+            <div className="bg-white rounded-lg shadow p-4 mb-6">
+              <div className="flex flex-wrap gap-4">
+                <div className="flex-1 min-w-[200px]">
+                  <input
+                    type="text"
+                    placeholder="Search medicines..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="input-field w-full"
+                  />
+                </div>
+                <div className="min-w-[150px]">
+                  <select
+                    value={selectedCategory}
+                    onChange={(e) => setSelectedCategory(e.target.value)}
+                    className="input-field w-full"
+                  >
+                    <option value="">All Categories</option>
+                    {categories.map(category => (
+                      <option key={category} value={category}>{category}</option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  onClick={() => {
+                    setSearchTerm('');
+                    setSelectedCategory('');
+                  }}
+                  className="btn-secondary px-4 py-2 rounded-lg"
+                >
+                  Clear Filters
+                </button>
+              </div>
+            </div>
+
+            {/* Medicine List */}
+            <div className="bg-white rounded-lg shadow overflow-hidden">
+              {loading ? (
+                <div className="p-8 text-center">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
+                  <p className="text-gray-600 mt-4">Loading medicines...</p>
+                </div>
+              ) : filteredMedicines.length === 0 ? (
+                <div className="p-8 text-center">
+                  <p className="text-gray-600">No medicines found.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Price</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Batch</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Expiry</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {filteredMedicines.map((medicine) => (
+                        <tr key={medicine.medicine_id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4">
+                            <div className="text-sm font-medium text-gray-900">{medicine.name}</div>
+                            <div className="text-xs text-gray-500">{medicine.manufacturer}</div>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-600">{medicine.category}</td>
+                          <td className="px-6 py-4">
+                            <span className={`text-sm font-medium ${
+                              medicine.quantity <= 50 ? 'text-red-600' : 'text-gray-900'
+                            }`}>
+                              {medicine.quantity}
+                              {medicine.quantity <= 50 && ' ⚠️'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-900">₹{medicine.price?.toFixed(2) || '0.00'}</td>
+                          <td className="px-6 py-4 text-sm text-gray-600">{medicine.batch_number}</td>
+                          <td className="px-6 py-4 text-sm text-gray-600">
+                            {medicine.expiry_date ? new Date(medicine.expiry_date).toLocaleDateString() : 'N/A'}
+                          </td>
+                          <td className="px-6 py-4 text-sm">
+                            <button
+                              onClick={() => handleEdit(medicine)}
+                              className="text-blue-600 hover:text-blue-800 mr-3"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => handleDelete(medicine.medicine_id)}
+                              className="text-red-600 hover:text-red-800"
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* Patients Tab */}
+        {activeTab === 'patients' && (
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            {loading ? (
+              <div className="p-8 text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
+                <p className="text-gray-600 mt-4">Loading patients...</p>
+              </div>
+            ) : patients.length === 0 ? (
+              <div className="p-8 text-center">
+                <p className="text-gray-600">No patients registered yet.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Patient ID</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Phone</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Biometric</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Registered</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {patients.map((patient) => (
+                      <tr key={patient.patient_id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 text-sm font-medium text-gray-900">{patient.patient_id}</td>
+                        <td className="px-6 py-4 text-sm text-gray-900">{patient.full_name}</td>
+                        <td className="px-6 py-4 text-sm text-gray-600">{patient.email}</td>
+                        <td className="px-6 py-4 text-sm text-gray-600">{patient.phone}</td>
+                        <td className="px-6 py-4 text-sm">
+                          {patient.has_biometric ? (
+                            <span className="text-green-600">✅</span>
+                          ) : (
+                            <span className="text-red-600">❌</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-600">
+                          {patient.registration_complete ? (
+                            <span className="text-green-600">✅ Complete</span>
+                          ) : (
+                            <span className="text-yellow-600">⏳ Pending</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Add/Edit Modal */}
         {showAddForm && (
@@ -332,98 +496,6 @@ const AdminDashboard = () => {
             </div>
           </div>
         )}
-
-        {/* Medicine List */}
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          {loading ? (
-            <div className="p-8 text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
-              <p className="text-gray-600 mt-4">Loading medicines...</p>
-            </div>
-          ) : filteredMedicines.length === 0 ? (
-            <div className="p-8 text-center">
-              <p className="text-gray-600">No medicines found.</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Price</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Batch</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Expiry</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {filteredMedicines.map((medicine) => (
-                    <tr key={medicine.medicine_id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4">
-                        <div className="text-sm font-medium text-gray-900">{medicine.name}</div>
-                        <div className="text-xs text-gray-500">{medicine.manufacturer}</div>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-600">{medicine.category}</td>
-                      <td className="px-6 py-4">
-                        <span className={`text-sm font-medium ${
-                          medicine.quantity <= 50 ? 'text-red-600' : 'text-gray-900'
-                        }`}>
-                          {medicine.quantity}
-                          {medicine.quantity <= 50 && ' ⚠️'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-900">₹{medicine.price?.toFixed(2) || '0.00'}</td>
-                      <td className="px-6 py-4 text-sm text-gray-600">{medicine.batch_number}</td>
-                      <td className="px-6 py-4 text-sm text-gray-600">
-                        {medicine.expiry_date ? new Date(medicine.expiry_date).toLocaleDateString() : 'N/A'}
-                      </td>
-                      <td className="px-6 py-4 text-sm">
-                        <button
-                          onClick={() => handleEdit(medicine)}
-                          className="text-blue-600 hover:text-blue-800 mr-3"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => handleDelete(medicine.medicine_id)}
-                          className="text-red-600 hover:text-red-800"
-                        >
-                          Delete
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        {/* Statistics */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-6">
-          <div className="bg-white rounded-lg shadow p-4">
-            <p className="text-sm text-gray-600">Total Medicines</p>
-            <p className="text-2xl font-bold">{medicines.length}</p>
-          </div>
-          <div className="bg-white rounded-lg shadow p-4">
-            <p className="text-sm text-gray-600">Low Stock Items</p>
-            <p className="text-2xl font-bold text-red-600">
-              {medicines.filter(m => m.quantity <= 50).length}
-            </p>
-          </div>
-          <div className="bg-white rounded-lg shadow p-4">
-            <p className="text-sm text-gray-600">Categories</p>
-            <p className="text-2xl font-bold">{categories.length}</p>
-          </div>
-          <div className="bg-white rounded-lg shadow p-4">
-            <p className="text-sm text-gray-600">Total Value</p>
-            <p className="text-2xl font-bold">
-              ₹{medicines.reduce((sum, m) => sum + (m.price * m.quantity), 0).toFixed(2)}
-            </p>
-          </div>
-        </div>
       </div>
     </div>
   );
