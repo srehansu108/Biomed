@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     WEBAUTHN_ORIGIN: str = "https://biomed-auth.netlify.app"
     
     # CORS
-    ALLOWED_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:8000", "https://biomed-2nq9.onrender.com/", "https://biomed-auth.netlify.app"]
+    ALLOWED_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:8000", "https://biomed-2nq9.onrender.com", "https://biomed-auth.netlify.app"]
     
     # QR Code
     QR_CODE_EXPIRY_SECONDS: int = 300
