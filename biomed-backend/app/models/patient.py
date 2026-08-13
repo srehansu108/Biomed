@@ -33,6 +33,7 @@ class Patient(BaseModel):
     allergies: List[str] = []
     medical_notes: Optional[str] = None
     has_biometric: bool = False
+    registration_complete: bool = False  # ✅ ADDED: Track registration completion
     created_at: datetime = datetime.now()
     updated_at: datetime = datetime.now()
     

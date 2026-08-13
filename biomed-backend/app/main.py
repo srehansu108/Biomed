@@ -22,12 +22,24 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Starting BioMed Pharmacy API...")
     logger.info(f"Environment: {settings.ENVIRONMENT if hasattr(settings, 'ENVIRONMENT') else 'development'}")
     
+    # Connect to database
     connected = await database.connect()
     if not connected:
         logger.error("❌ Failed to connect to MongoDB!")
         raise RuntimeError("Database connection failed")
     
+    # ✅ Verify WebAuthn configuration
+    try:
+        from .routes.webauthn import validate_webauthn_config
+        validate_webauthn_config()
+        logger.info("✅ WebAuthn configuration validated")
+    except Exception as e:
+        logger.error(f"❌ WebAuthn configuration error: {e}")
+        raise
+    
+    logger.info("✅ All systems ready!")
     yield
+    
     # Shutdown
     await database.disconnect()
     logger.info("🛑 BioMed Pharmacy API shut down")
@@ -42,10 +54,42 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
+# ✅ Trusted Host Middleware - Add for production
+# app.add_middleware(
+#     TrustedHostMiddleware,
+#     allowed_hosts=["localhost", "127.0.0.1", "yourdomain.com"]
+# )
+
+# ✅ GZip Middleware - Compress responses
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+# ✅ Request Logging Middleware
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Log all incoming requests"""
+    start_time = time.time()
+    
+    # Log request
+    logger.info(f"Request: {request.method} {request.url.path}")
+    
+    # Process request
+    response = await call_next(request)
+    
+    # Log response
+    process_time = time.time() - start_time
+    logger.info(
+        f"Response: {response.status_code} - {request.method} {request.url.path} "
+        f"({process_time:.3f}s)"
+    )
+    
+    # Add processing time header
+    response.headers["X-Process-Time"] = str(process_time)
+    return response
+
 # CORS middleware - Allow all origins for development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Configure this properly in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -65,28 +109,53 @@ async def root():
         "message": "Welcome to BioMed Pharmacy API",
         "version": "1.0.0",
         "status": "running",
-        "docs": "/docs"
+        "docs": "/docs",
+        "redoc": "/redoc"
     }
 
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
     try:
-        if database.db is None:
-            return {
-                "status": "unhealthy",
-                "database": "disconnected"
-            }
+        # Check database
+        db_status = await database.ping()
         
-        await database.db.command("ping")
         return {
-            "status": "healthy",
-            "database": "connected"
+            "status": "healthy" if db_status else "unhealthy",
+            "database": "connected" if db_status else "disconnected",
+            "timestamp": time.time()
         }
     except Exception as e:
         logger.error(f"Health check failed: {e}")
         return {
             "status": "unhealthy",
             "database": "disconnected",
-            "error": str(e)
+            "error": str(e),
+            "timestamp": time.time()
         }
+
+# ✅ Error handler for 404
+@app.exception_handler(404)
+async def not_found_handler(request: Request, exc):
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        status_code=404,
+        content={
+            "detail": "Not Found",
+            "path": request.url.path,
+            "method": request.method
+        }
+    )
+
+# ✅ Global exception handler
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc):
+    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": "Internal Server Error",
+            "message": str(exc) if settings.DEBUG else "An error occurred"
+        }
+    )
