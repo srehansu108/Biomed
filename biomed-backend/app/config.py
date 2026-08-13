@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     # WebAuthn
     WEBAUTHN_RP_ID: str = "biomed-auth.netlify.app"
     WEBAUTHN_RP_NAME: str = "BioMed Pharmacy"
-    WEBAUTHN_ORIGIN: str = "https://biomed-auth.netlify.app/"
+    WEBAUTHN_ORIGIN: str = "https://biomed-auth.netlify.app"
     
     # CORS
     ALLOWED_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:8000", "https://biomed-2nq9.onrender.com/", "https://biomed-auth.netlify.app"]
