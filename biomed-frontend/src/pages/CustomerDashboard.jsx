@@ -1,121 +1,174 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { medicineAPI } from '../services/api';
 
 const CustomerDashboard = () => {
-  const [user] = useState({
-    name: 'John Doe',
-    email: 'john@example.com',
-    patientId: 'PAT-2026-001'
-  })
+  const navigate = useNavigate();
+  const [medicines, setMedicines] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('');
+  const [categories, setCategories] = useState([]);
+  const [showPrescriptionOnly, setShowPrescriptionOnly] = useState(false);
 
-  // Mock data
-  const prescriptions = [
-    {
-      id: 'PR-10025',
-      doctor: 'Dr. Sharma',
-      date: '09-Aug-2026',
-      medicines: [
-        { name: 'Paracetamol 500mg', quantity: 10, dosage: '1 tablet twice daily' },
-        { name: 'Pantoprazole 40mg', quantity: 5, dosage: '1 tablet once daily' }
-      ]
+  useEffect(() => {
+    fetchMedicines();
+  }, []);
+
+  const fetchMedicines = async () => {
+    try {
+      setLoading(true);
+      const response = await medicineAPI.getAvailable();
+      setMedicines(response.data);
+      const cats = [...new Set(response.data.map(m => m.category))];
+      setCategories(cats);
+    } catch (error) {
+      console.error('Error fetching medicines:', error);
+    } finally {
+      setLoading(false);
     }
-  ]
+  };
 
-  const purchaseHistory = [
-    { id: 'SALE-001', date: '08-Aug-2026', amount: 450, medicines: 3 },
-    { id: 'SALE-002', date: '01-Aug-2026', amount: 320, medicines: 2 }
-  ]
+  const filteredMedicines = medicines.filter(medicine => {
+    const matchesSearch = medicine.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         medicine.manufacturer.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCategory = !selectedCategory || medicine.category === selectedCategory;
+    const matchesPrescription = !showPrescriptionOnly || medicine.requires_prescription;
+    return matchesSearch && matchesCategory && matchesPrescription;
+  });
 
   return (
-    <div className="space-y-6">
-      {/* Welcome Banner */}
-      <div className="bg-gradient-to-r from-primary-500 to-primary-700 rounded-2xl p-6 text-white">
-        <h1 className="text-3xl font-bold">Welcome back, {user.name}! 👋</h1>
-        <p className="opacity-90">Patient ID: {user.patientId}</p>
-        <div className="mt-4 flex gap-2">
-          <span className="bg-white/20 px-3 py-1 rounded-full text-sm">✅ Biometric Enabled</span>
-        </div>
-      </div>
-
-      {/* Quick Actions */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          { icon: '💊', label: 'My Prescriptions', count: prescriptions.length },
-          { icon: '🛒', label: 'Purchase History', count: purchaseHistory.length },
-          { icon: '📱', label: 'QR Code', action: true },
-          { icon: '👤', label: 'Profile', action: true }
-        ].map((item, i) => (
-          <div key={i} className="card cursor-pointer hover:scale-105 transition-transform">
-            <div className="text-3xl">{item.icon}</div>
-            <p className="font-semibold mt-2">{item.label}</p>
-            {item.count !== undefined && (
-              <p className="text-sm text-gray-500">{item.count} items</p>
-            )}
-          </div>
-        ))}
-      </div>
-
-      {/* Prescriptions */}
-      <div className="card">
-        <h2 className="text-xl font-bold mb-4">💊 Active Prescriptions</h2>
-        {prescriptions.length > 0 ? (
-          prescriptions.map((prescription) => (
-            <div key={prescription.id} className="border rounded-lg p-4 mb-3 hover:bg-gray-50">
-              <div className="flex justify-between items-start">
-                <div>
-                  <p className="font-semibold">{prescription.id}</p>
-                  <p className="text-sm text-gray-600">{prescription.doctor}</p>
-                  <p className="text-sm text-gray-500">{prescription.date}</p>
-                </div>
-                <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm">
-                  Active
-                </span>
-              </div>
-              <div className="mt-2">
-                {prescription.medicines.map((med, idx) => (
-                  <div key={idx} className="text-sm text-gray-600">
-                    • {med.name} - {med.dosage}
-                  </div>
-                ))}
-              </div>
+    <div className="min-h-screen bg-gray-50 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Header */}
+        <div className="bg-white rounded-lg shadow p-6 mb-8">
+          <div className="flex flex-wrap justify-between items-center">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">🏥 Medicine Store</h1>
+              <p className="text-gray-600 mt-1">Browse our available medicines</p>
             </div>
-          ))
-        ) : (
-          <p className="text-gray-500">No active prescriptions</p>
-        )}
-      </div>
+            <div className="flex gap-3">
+              <span className="bg-green-100 text-green-800 px-4 py-2 rounded-lg text-sm">
+                ✅ {medicines.length} Medicines Available
+              </span>
+              <button
+                onClick={() => navigate('/orders')}
+                className="btn-secondary px-4 py-2 rounded-lg"
+              >
+                My Orders
+              </button>
+            </div>
+          </div>
+        </div>
 
-      {/* Purchase History */}
-      <div className="card">
-        <h2 className="text-xl font-bold mb-4">🛒 Recent Purchases</h2>
-        {purchaseHistory.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="text-left text-gray-600 border-b">
-                  <th className="py-2">Invoice</th>
-                  <th>Date</th>
-                  <th>Items</th>
-                  <th className="text-right">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {purchaseHistory.map((purchase) => (
-                  <tr key={purchase.id} className="border-b hover:bg-gray-50">
-                    <td className="py-2 font-medium">{purchase.id}</td>
-                    <td>{purchase.date}</td>
-                    <td>{purchase.medicines} medicines</td>
-                    <td className="text-right font-semibold">₹{purchase.amount}</td>
-                  </tr>
+        {/* Search and Filters */}
+        <div className="bg-white rounded-lg shadow p-4 mb-6">
+          <div className="flex flex-wrap gap-4">
+            <div className="flex-1 min-w-[200px]">
+              <input
+                type="text"
+                placeholder="Search medicines..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="input-field w-full"
+              />
+            </div>
+            <div className="min-w-[150px]">
+              <select
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value)}
+                className="input-field w-full"
+              >
+                <option value="">All Categories</option>
+                {categories.map(category => (
+                  <option key={category} value={category}>{category}</option>
                 ))}
-              </tbody>
-            </table>
+              </select>
+            </div>
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="prescriptionOnly"
+                checked={showPrescriptionOnly}
+                onChange={(e) => setShowPrescriptionOnly(e.target.checked)}
+                className="w-4 h-4 text-primary-600 border-gray-300 rounded mr-2"
+              />
+              <label htmlFor="prescriptionOnly" className="text-sm text-gray-700">
+                Prescription Only
+              </label>
+            </div>
+          </div>
+        </div>
+
+        {/* Medicine Grid */}
+        {loading ? (
+          <div className="p-8 text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
+            <p className="text-gray-600 mt-4">Loading medicines...</p>
+          </div>
+        ) : filteredMedicines.length === 0 ? (
+          <div className="bg-white rounded-lg shadow p-12 text-center">
+            <div className="text-6xl mb-4">🔍</div>
+            <h3 className="text-xl font-semibold text-gray-700">No medicines found</h3>
+            <p className="text-gray-500 mt-2">Try adjusting your search or filters</p>
           </div>
         ) : (
-          <p className="text-gray-500">No purchase history</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {filteredMedicines.map((medicine) => (
+              <div key={medicine.medicine_id} className="bg-white rounded-lg shadow hover:shadow-lg transition-shadow duration-300">
+                <div className="p-6">
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <h3 className="text-lg font-semibold text-gray-900">{medicine.name}</h3>
+                      <p className="text-sm text-gray-600">{medicine.manufacturer}</p>
+                    </div>
+                    {medicine.requires_prescription && (
+                      <span className="bg-red-100 text-red-800 text-xs px-2 py-1 rounded-full">
+                        Rx Required
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="mt-4 space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Category:</span>
+                      <span className="font-medium text-gray-900">{medicine.category}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Price:</span>
+                      <span className="font-bold text-primary-600">₹{medicine.price.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Stock:</span>
+                      <span className={`font-medium ${
+                        medicine.quantity > 50 ? 'text-green-600' : 
+                        medicine.quantity > 10 ? 'text-yellow-600' : 
+                        'text-red-600'
+                      }`}>
+                        {medicine.quantity} units
+                        {medicine.quantity <= 10 && ' ⚠️ Low Stock'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      // Navigate to order page or show medicine details
+                      alert(`Order for ${medicine.name} will be processed!`);
+                    }}
+                    className="w-full btn-primary mt-4 py-2 rounded-lg"
+                    disabled={medicine.quantity === 0}
+                  >
+                    {medicine.quantity === 0 ? 'Out of Stock' : 'Order Now'}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>
-  )
-}
+  );
+};
 
-export default CustomerDashboard
+export default CustomerDashboard;

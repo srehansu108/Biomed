@@ -3,7 +3,6 @@ import axios from 'axios';
 
 const API_BASE_URL = 'https://biomed-2nq9.onrender.com/api';
 
-// Create axios instance
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
@@ -20,21 +19,7 @@ api.interceptors.request.use(
     }
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
-);
-
-// Handle token expiration
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('patient_id');
-    }
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
 // Auth APIs
@@ -59,19 +44,23 @@ export const webauthnAPI = {
   }),
 };
 
+// Medicine APIs
+export const medicineAPI = {
+  getAll: () => api.get('/medicines'),
+  getAvailable: () => api.get('/medicines/available'),
+  getById: (id) => api.get(`/medicines/${id}`),
+  create: (data) => api.post('/medicines', data),
+  update: (id, data) => api.put(`/medicines/${id}`, data),
+  delete: (id) => api.delete(`/medicines/${id}`),
+  updateStock: (id, quantity) => api.patch(`/medicines/${id}/stock`, { quantity }),
+  getLowStock: (threshold = 50) => api.get(`/medicines/low-stock/${threshold}`),
+};
+
 // Patient APIs
 export const patientAPI = {
   getAll: () => api.get('/patients'),
   getById: (id) => api.get(`/patients/${id}`),
   getPrescriptions: (id) => api.get(`/patients/${id}/prescriptions`),
-};
-
-// Medicine APIs
-export const medicineAPI = {
-  getAll: () => api.get('/medicines'),
-  create: (data) => api.post('/medicines', data),
-  getLowStock: (threshold = 50) => api.get(`/medicines/low-stock?threshold=${threshold}`),
-  getExpiring: (days = 90) => api.get(`/medicines/expiring?days=${days}`),
 };
 
 // Prescription APIs
