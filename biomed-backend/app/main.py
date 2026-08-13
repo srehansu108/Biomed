@@ -8,6 +8,7 @@ import time
 from .database.mongodb import database
 from .config import settings
 from .routes import auth, patients, medicines, prescriptions, sales, webauthn
+from .routes import patient_medicines
 
 # Configure logging
 logging.basicConfig(
@@ -102,6 +103,7 @@ app.include_router(patients.router, prefix="/api")
 app.include_router(medicines.router, prefix="/api")
 app.include_router(prescriptions.router, prefix="/api")
 app.include_router(sales.router, prefix="/api")
+app.include_router(patient_medicines.router, prefix="/api")
 
 @app.get("/")
 async def root():

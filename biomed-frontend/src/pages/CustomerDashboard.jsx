@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { medicineAPI, patientAPI, prescriptionAPI, salesAPI } from '../services/api';
+import { medicineAPI, patientAPI, prescriptionAPI, salesAPI, patientMedicineAPI } from '../services/api';
 
 const CustomerDashboard = () => {
   const navigate = useNavigate();
@@ -9,6 +9,7 @@ const CustomerDashboard = () => {
   const [patient, setPatient] = useState(null);
   const [prescriptions, setPrescriptions] = useState([]);
   const [purchases, setPurchases] = useState([]);
+  const [patientMedicines, setPatientMedicines] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [categories, setCategories] = useState([]);
@@ -17,7 +18,8 @@ const CustomerDashboard = () => {
     totalPrescriptions: 0,
     totalPurchases: 0,
     activePrescriptions: 0,
-    totalSpent: 0
+    totalSpent: 0,
+    assignedMedicines: 0
   });
 
   useEffect(() => {
@@ -44,25 +46,44 @@ const CustomerDashboard = () => {
       const cats = [...new Set(medicinesResponse.data.map(m => m.category))];
       setCategories(cats);
 
+      // ✅ Fetch patient's assigned medicines
+      try {
+        const patientMedicinesResponse = await patientMedicineAPI.getByPatient(patientId);
+        const assignedMedicines = patientMedicinesResponse.data || [];
+        setPatientMedicines(assignedMedicines);
+      } catch (error) {
+        console.log('No assigned medicines found');
+        setPatientMedicines([]);
+      }
+
       // Fetch prescriptions
-      const prescriptionsResponse = await prescriptionAPI.getByPatient(patientId);
-      const allPrescriptions = prescriptionsResponse.data || [];
-      setPrescriptions(allPrescriptions);
+      try {
+        const prescriptionsResponse = await prescriptionAPI.getByPatient(patientId);
+        const allPrescriptions = prescriptionsResponse.data || [];
+        setPrescriptions(allPrescriptions);
+      } catch (error) {
+        setPrescriptions([]);
+      }
 
       // Fetch purchase history
-      const purchasesResponse = await salesAPI.getByPatient(patientId);
-      const allPurchases = purchasesResponse.data || [];
-      setPurchases(allPurchases);
+      try {
+        const purchasesResponse = await salesAPI.getByPatient(patientId);
+        const allPurchases = purchasesResponse.data || [];
+        setPurchases(allPurchases);
+      } catch (error) {
+        setPurchases([]);
+      }
 
       // Calculate stats
-      const activePrescriptions = allPrescriptions.filter(p => p.status === 'active');
-      const totalSpent = allPurchases.reduce((sum, p) => sum + (p.total_amount || 0), 0);
+      const activePrescriptions = prescriptions.filter(p => p.status === 'active');
+      const totalSpent = purchases.reduce((sum, p) => sum + (p.total_amount || 0), 0);
 
       setStats({
-        totalPrescriptions: allPrescriptions.length,
-        totalPurchases: allPurchases.length,
+        totalPrescriptions: prescriptions.length,
+        totalPurchases: purchases.length,
         activePrescriptions: activePrescriptions.length,
-        totalSpent: totalSpent
+        totalSpent: totalSpent,
+        assignedMedicines: patientMedicines.filter(m => m.status === 'active' && m.remaining_quantity > 0).length
       });
 
     } catch (error) {
@@ -88,6 +109,18 @@ const CustomerDashboard = () => {
       month: 'short',
       year: 'numeric'
     });
+  };
+
+  const handleTakeMedicine = async (id) => {
+    if (window.confirm('Mark this medicine as taken?')) {
+      try {
+        await patientMedicineAPI.consume(id, 1);
+        await fetchAllData();
+        alert('✅ Medicine marked as taken!');
+      } catch (error) {
+        alert('❌ Failed to update. Please try again.');
+      }
+    }
   };
 
   const filteredMedicines = medicines.filter(medicine => {
@@ -157,55 +190,122 @@ const CustomerDashboard = () => {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white rounded-xl shadow p-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+          <div className="bg-white rounded-xl shadow p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Total Prescriptions</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.totalPrescriptions}</p>
+                <p className="text-xs text-gray-600">Total Prescriptions</p>
+                <p className="text-xl font-bold text-gray-900">{stats.totalPrescriptions}</p>
               </div>
-              <div className="bg-blue-100 rounded-full p-3">
-                <span className="text-2xl">💊</span>
+              <div className="bg-blue-100 rounded-full p-2">
+                <span className="text-xl">💊</span>
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-xl shadow p-6">
+          <div className="bg-white rounded-xl shadow p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Active Prescriptions</p>
-                <p className="text-2xl font-bold text-green-600">{stats.activePrescriptions}</p>
+                <p className="text-xs text-gray-600">Active Prescriptions</p>
+                <p className="text-xl font-bold text-green-600">{stats.activePrescriptions}</p>
               </div>
-              <div className="bg-green-100 rounded-full p-3">
-                <span className="text-2xl">✅</span>
+              <div className="bg-green-100 rounded-full p-2">
+                <span className="text-xl">✅</span>
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-xl shadow p-6">
+          <div className="bg-white rounded-xl shadow p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Total Purchases</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.totalPurchases}</p>
+                <p className="text-xs text-gray-600">Assigned Medicines</p>
+                <p className="text-xl font-bold text-purple-600">{stats.assignedMedicines}</p>
               </div>
-              <div className="bg-purple-100 rounded-full p-3">
-                <span className="text-2xl">🛒</span>
+              <div className="bg-purple-100 rounded-full p-2">
+                <span className="text-xl">📋</span>
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-xl shadow p-6">
+          <div className="bg-white rounded-xl shadow p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Total Spent</p>
-                <p className="text-2xl font-bold text-primary-600">₹{stats.totalSpent.toFixed(2)}</p>
+                <p className="text-xs text-gray-600">Total Purchases</p>
+                <p className="text-xl font-bold text-gray-900">{stats.totalPurchases}</p>
               </div>
-              <div className="bg-yellow-100 rounded-full p-3">
-                <span className="text-2xl">💰</span>
+              <div className="bg-orange-100 rounded-full p-2">
+                <span className="text-xl">🛒</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-gray-600">Total Spent</p>
+                <p className="text-xl font-bold text-primary-600">₹{stats.totalSpent.toFixed(2)}</p>
+              </div>
+              <div className="bg-yellow-100 rounded-full p-2">
+                <span className="text-xl">💰</span>
               </div>
             </div>
           </div>
         </div>
+
+        {/* ✅ Assigned Medicines Section - NEW */}
+        {patientMedicines.filter(m => m.status === 'active' && m.remaining_quantity > 0).length > 0 && (
+          <div className="bg-white rounded-xl shadow p-6 mb-8">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">💊 Your Prescribed Medicines</h2>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {patientMedicines
+                .filter(m => m.status === 'active' && m.remaining_quantity > 0)
+                .map((item) => (
+                  <div key={item._id} className="border rounded-lg p-4 hover:shadow-lg transition-shadow">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h3 className="font-semibold text-gray-900">{item.medicine_name}</h3>
+                        <p className="text-sm text-gray-600">{item.category}</p>
+                      </div>
+                      <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">
+                        Active
+                      </span>
+                    </div>
+                    
+                    <div className="mt-3 space-y-1 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Dosage:</span>
+                        <span className="font-medium">{item.dosage}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Remaining:</span>
+                        <span className="font-medium">
+                          {item.remaining_quantity} / {item.quantity}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Prescribed by:</span>
+                        <span className="font-medium">{item.prescribed_by}</span>
+                      </div>
+                      {item.notes && (
+                        <div className="text-gray-600 text-xs mt-2 bg-gray-50 p-2 rounded">
+                          📝 {item.notes}
+                        </div>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={() => handleTakeMedicine(item._id)}
+                      className="w-full btn-primary mt-3 py-2 rounded-lg text-sm"
+                      disabled={item.remaining_quantity === 0}
+                    >
+                      {item.remaining_quantity === 0 ? '✅ Completed' : 'Take Medicine'}
+                    </button>
+                  </div>
+                ))}
+            </div>
+          </div>
+        )}
 
         {/* Patient Info Card */}
         <div className="bg-white rounded-xl shadow p-6 mb-8">
@@ -314,7 +414,6 @@ const CustomerDashboard = () => {
                   </div>
                   <button
                     onClick={() => {
-                      // Order functionality
                       alert(`Order for ${medicine.name} will be processed!`);
                     }}
                     className="w-full btn-primary mt-3 py-2 rounded-lg text-sm"

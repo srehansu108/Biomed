@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, List
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, Field
 from bson import ObjectId
 
 class PyObjectId(ObjectId):
@@ -14,27 +14,22 @@ class PyObjectId(ObjectId):
             raise ValueError("Invalid objectid")
         return ObjectId(v)
 
-class Address(BaseModel):
-    street: str
-    city: str
-    state: str
-    pincode: str
-    country: str = "India"
-
-class Patient(BaseModel):
+class PatientMedicine(BaseModel):
     id: Optional[PyObjectId] = Field(default=None, alias="_id")
     patient_id: str
-    full_name: str
-    date_of_birth: datetime
-    gender: str
-    phone: str
-    email: EmailStr
-    address: Address
-    allergies: List[str] = []
-    medical_notes: Optional[str] = None
-    has_biometric: bool = False
-    registration_complete: bool = False
-    role: str = "patient"  # ✅ ADDED: "patient" or "admin"
+    medicine_id: str
+    medicine_name: str
+    category: str
+    dosage: str  # e.g., "1 tablet twice daily"
+    quantity: int  # Total quantity prescribed
+    remaining_quantity: int  # Remaining quantity
+    price: float
+    status: str = "active"  # active, completed, expired, cancelled
+    prescribed_by: str  # Admin/Doctor name
+    prescribed_date: datetime = datetime.now()
+    expiry_date: Optional[datetime] = None
+    notes: Optional[str] = None
+    requires_prescription: bool = True
     created_at: datetime = datetime.now()
     updated_at: datetime = datetime.now()
     

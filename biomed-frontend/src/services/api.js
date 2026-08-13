@@ -54,6 +54,7 @@ export const medicineAPI = {
   delete: (id) => api.delete(`/medicines/${id}`),
   updateStock: (id, quantity) => api.patch(`/medicines/${id}/stock`, { quantity }),
   getLowStock: (threshold = 50) => api.get(`/medicines/low-stock/${threshold}`),
+  getCategories: () => api.get('/medicines/categories'),
 };
 
 // Patient APIs
@@ -61,12 +62,38 @@ export const patientAPI = {
   getAll: () => api.get('/patients'),
   getById: (id) => api.get(`/patients/${id}`),
   getPrescriptions: (id) => api.get(`/patients/${id}/prescriptions`),
+  getStats: () => api.get('/patients/stats/overview'),
+};
+
+// ✅ Patient Medicine APIs - NEW
+export const patientMedicineAPI = {
+  // Assign medicine to patient
+  assign: (data) => api.post('/patient-medicines', data),
+  
+  // Get all medicines for a patient
+  getByPatient: (patientId) => api.get(`/patient-medicines/patient/${patientId}`),
+  
+  // Get a specific patient medicine
+  getById: (id) => api.get(`/patient-medicines/${id}`),
+  
+  // Update patient medicine
+  update: (id, data) => api.put(`/patient-medicines/${id}`, data),
+  
+  // Patient consumes medicine
+  consume: (id, quantity = 1) => api.patch(`/patient-medicines/${id}/consume?quantity=${quantity}`),
+  
+  // Remove medicine from patient
+  remove: (id) => api.delete(`/patient-medicines/${id}`),
+  
+  // Get all assigned medicines (admin)
+  getAll: () => api.get('/patient-medicines'),
 };
 
 // Prescription APIs
 export const prescriptionAPI = {
   getAll: () => api.get('/prescriptions'),
   getById: (id) => api.get(`/prescriptions/${id}`),
+  getByPatient: (patientId) => api.get(`/prescriptions/patient/${patientId}`),
   create: (data) => api.post('/prescriptions', data),
   updateStatus: (id, status) => api.patch(`/prescriptions/${id}/status?status=${status}`),
   dispense: (id) => api.post(`/prescriptions/${id}/dispense`),
@@ -77,6 +104,7 @@ export const salesAPI = {
   getAll: () => api.get('/sales'),
   create: (data) => api.post('/sales', data),
   getToday: () => api.get('/sales/today'),
+  getByPatient: (patientId) => api.get(`/sales/patient/${patientId}`),
 };
 
 export default api;

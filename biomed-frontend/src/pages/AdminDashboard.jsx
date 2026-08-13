@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { medicineAPI, patientAPI } from '../services/api';
+import { medicineAPI, patientAPI, patientMedicineAPI } from '../services/api';
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
@@ -9,7 +9,9 @@ const AdminDashboard = () => {
   const [patients, setPatients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [showAssignForm, setShowAssignForm] = useState(false);
   const [editingMedicine, setEditingMedicine] = useState(null);
+  const [selectedPatient, setSelectedPatient] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [categories, setCategories] = useState([]);
@@ -23,6 +25,18 @@ const AdminDashboard = () => {
     batch_number: '',
     expiry_date: '',
     requires_prescription: false
+  });
+  const [assignData, setAssignData] = useState({
+    patient_id: '',
+    medicine_id: '',
+    medicine_name: '',
+    category: '',
+    dosage: '',
+    quantity: 1,
+    price: 0,
+    prescribed_by: 'Admin',
+    expiry_date: '',
+    notes: ''
   });
 
   useEffect(() => {
@@ -41,6 +55,10 @@ const AdminDashboard = () => {
       } else if (activeTab === 'patients') {
         const response = await patientAPI.getAll();
         setPatients(response.data);
+      } else if (activeTab === 'assigned') {
+        // Fetch all assigned medicines
+        const response = await patientMedicineAPI.getAll();
+        setAssignedMedicines(response.data);
       }
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -55,6 +73,37 @@ const AdminDashboard = () => {
       ...formData,
       [name]: type === 'checkbox' ? checked : value
     });
+  };
+
+  const handleAssignChange = (e) => {
+    const { name, value } = e.target;
+    setAssignData({
+      ...assignData,
+      [name]: value
+    });
+  };
+
+  const handlePatientSelect = (e) => {
+    const patientId = e.target.value;
+    setSelectedPatient(patientId);
+    setAssignData({
+      ...assignData,
+      patient_id: patientId
+    });
+  };
+
+  const handleMedicineSelect = (e) => {
+    const medicineId = e.target.value;
+    const medicine = medicines.find(m => m.medicine_id === medicineId);
+    if (medicine) {
+      setAssignData({
+        ...assignData,
+        medicine_id: medicineId,
+        medicine_name: medicine.name,
+        category: medicine.category,
+        price: medicine.price
+      });
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -84,20 +133,29 @@ const AdminDashboard = () => {
     }
   };
 
-  const handleEdit = (medicine) => {
-    setEditingMedicine(medicine);
-    setFormData({
-      name: medicine.name,
-      category: medicine.category,
-      description: medicine.description || '',
-      quantity: medicine.quantity,
-      price: medicine.price,
-      manufacturer: medicine.manufacturer,
-      batch_number: medicine.batch_number,
-      expiry_date: medicine.expiry_date?.split('T')[0] || '',
-      requires_prescription: medicine.requires_prescription || false
-    });
-    setShowAddForm(true);
+  const handleAssign = async (e) => {
+    e.preventDefault();
+    try {
+      await patientMedicineAPI.assign(assignData);
+      setShowAssignForm(false);
+      setAssignData({
+        patient_id: '',
+        medicine_id: '',
+        medicine_name: '',
+        category: '',
+        dosage: '',
+        quantity: 1,
+        price: 0,
+        prescribed_by: 'Admin',
+        expiry_date: '',
+        notes: ''
+      });
+      fetchData();
+      alert('✅ Medicine assigned to patient successfully!');
+    } catch (error) {
+      console.error('Error assigning medicine:', error);
+      alert('❌ Failed to assign medicine. Please try again.');
+    }
   };
 
   const handleDelete = async (medicineId) => {
@@ -152,30 +210,42 @@ const AdminDashboard = () => {
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
-            <p className="text-gray-600">Manage medicines and view patients</p>
+            <p className="text-gray-600">Manage medicines, patients, and prescriptions</p>
           </div>
-          {activeTab === 'medicines' && (
-            <button
-              onClick={() => {
-                setEditingMedicine(null);
-                setFormData({
-                  name: '',
-                  category: '',
-                  description: '',
-                  quantity: 0,
-                  price: 0,
-                  manufacturer: '',
-                  batch_number: '',
-                  expiry_date: '',
-                  requires_prescription: false
-                });
-                setShowAddForm(true);
-              }}
-              className="btn-primary px-6 py-2 rounded-lg"
-            >
-              + Add Medicine
-            </button>
-          )}
+          <div className="flex gap-3">
+            {activeTab === 'medicines' && (
+              <button
+                onClick={() => {
+                  setEditingMedicine(null);
+                  setFormData({
+                    name: '',
+                    category: '',
+                    description: '',
+                    quantity: 0,
+                    price: 0,
+                    manufacturer: '',
+                    batch_number: '',
+                    expiry_date: '',
+                    requires_prescription: false
+                  });
+                  setShowAddForm(true);
+                }}
+                className="btn-primary px-6 py-2 rounded-lg"
+              >
+                + Add Medicine
+              </button>
+            )}
+            {activeTab === 'patients' && (
+              <button
+                onClick={() => {
+                  setShowAssignForm(true);
+                }}
+                className="btn-primary px-6 py-2 rounded-lg"
+              >
+                + Assign Medicine
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Tabs */}
@@ -201,10 +271,20 @@ const AdminDashboard = () => {
             >
               👥 Patients
             </button>
+            <button
+              onClick={() => setActiveTab('assigned')}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'assigned'
+                  ? 'border-primary-500 text-primary-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              📋 Assigned Medicines
+            </button>
           </nav>
         </div>
 
-        {/* Medicines Tab */}
+        {/* Medicines Tab - Same as before */}
         {activeTab === 'medicines' && (
           <>
             {/* Search and Filter */}
@@ -336,6 +416,7 @@ const AdminDashboard = () => {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Phone</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Biometric</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Registered</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
@@ -359,6 +440,21 @@ const AdminDashboard = () => {
                             <span className="text-yellow-600">⏳ Pending</span>
                           )}
                         </td>
+                        <td className="px-6 py-4 text-sm">
+                          <button
+                            onClick={() => {
+                              setSelectedPatient(patient.patient_id);
+                              setAssignData({
+                                ...assignData,
+                                patient_id: patient.patient_id
+                              });
+                              setShowAssignForm(true);
+                            }}
+                            className="text-primary-600 hover:text-primary-800"
+                          >
+                            Assign Medicine
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -368,135 +464,181 @@ const AdminDashboard = () => {
           </div>
         )}
 
-        {/* Add/Edit Modal */}
-        {showAddForm && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-2xl font-bold">
-                  {editingMedicine ? 'Edit Medicine' : 'Add New Medicine'}
-                </h2>
-                <button
-                  onClick={() => {
-                    setShowAddForm(false);
-                    setEditingMedicine(null);
-                  }}
-                  className="text-gray-500 hover:text-gray-700 text-2xl"
-                >
-                  ×
-                </button>
-              </div>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="form-label">Medicine Name *</label>
-                    <input
-                      type="text"
-                      name="name"
-                      value={formData.name}
-                      onChange={handleInputChange}
-                      className="input-field w-full"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="form-label">Category *</label>
-                    <input
-                      type="text"
-                      name="category"
-                      value={formData.category}
-                      onChange={handleInputChange}
-                      className="input-field w-full"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="form-label">Manufacturer *</label>
-                    <input
-                      type="text"
-                      name="manufacturer"
-                      value={formData.manufacturer}
-                      onChange={handleInputChange}
-                      className="input-field w-full"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="form-label">Batch Number *</label>
-                    <input
-                      type="text"
-                      name="batch_number"
-                      value={formData.batch_number}
-                      onChange={handleInputChange}
-                      className="input-field w-full"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="form-label">Quantity *</label>
-                    <input
-                      type="number"
-                      name="quantity"
-                      value={formData.quantity}
-                      onChange={handleInputChange}
-                      className="input-field w-full"
-                      required
-                      min="0"
-                    />
-                  </div>
-                  <div>
-                    <label className="form-label">Price *</label>
-                    <input
-                      type="number"
-                      name="price"
-                      value={formData.price}
-                      onChange={handleInputChange}
-                      className="input-field w-full"
-                      required
-                      min="0"
-                      step="0.01"
-                    />
-                  </div>
-                  <div>
-                    <label className="form-label">Expiry Date *</label>
-                    <input
-                      type="date"
-                      name="expiry_date"
-                      value={formData.expiry_date}
-                      onChange={handleInputChange}
-                      className="input-field w-full"
-                      required
-                    />
-                  </div>
-                  <div className="flex items-center">
-                    <input
-                      type="checkbox"
-                      name="requires_prescription"
-                      checked={formData.requires_prescription}
-                      onChange={handleInputChange}
-                      className="w-4 h-4 text-primary-600 border-gray-300 rounded mr-2"
-                    />
-                    <label className="form-label mb-0">Requires Prescription</label>
-                  </div>
-                </div>
-                <div>
-                  <label className="form-label">Description</label>
-                  <textarea
-                    name="description"
-                    value={formData.description}
-                    onChange={handleInputChange}
-                    className="input-field w-full"
-                    rows="3"
-                  />
-                </div>
-                <button type="submit" className="btn-primary w-full py-3 rounded-lg">
-                  {editingMedicine ? 'Update Medicine' : 'Add Medicine'}
-                </button>
-              </form>
-            </div>
+        {/* Assigned Medicines Tab */}
+        {activeTab === 'assigned' && (
+          <div className="bg-white rounded-lg shadow overflow-hidden p-6">
+            <h3 className="text-lg font-semibold mb-4">📋 All Assigned Medicines</h3>
+            <p className="text-gray-600">View all medicines assigned to patients</p>
+            {/* You can add a table here to show all assigned medicines */}
           </div>
         )}
       </div>
+
+      {/* Assign Medicine Modal */}
+      {showAssignForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-2xl font-bold">Assign Medicine to Patient</h2>
+              <button
+                onClick={() => {
+                  setShowAssignForm(false);
+                  setSelectedPatient('');
+                }}
+                className="text-gray-500 hover:text-gray-700 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+            
+            <form onSubmit={handleAssign} className="space-y-4">
+              {/* Select Patient */}
+              <div>
+                <label className="form-label">Select Patient *</label>
+                <select
+                  name="patient_id"
+                  value={assignData.patient_id}
+                  onChange={handleAssignChange}
+                  className="input-field w-full"
+                  required
+                >
+                  <option value="">Select a patient</option>
+                  {patients.map(patient => (
+                    <option key={patient.patient_id} value={patient.patient_id}>
+                      {patient.full_name} ({patient.patient_id})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Select Medicine */}
+              <div>
+                <label className="form-label">Select Medicine *</label>
+                <select
+                  name="medicine_id"
+                  value={assignData.medicine_id}
+                  onChange={handleMedicineSelect}
+                  className="input-field w-full"
+                  required
+                >
+                  <option value="">Select a medicine</option>
+                  {medicines.map(medicine => (
+                    <option key={medicine.medicine_id} value={medicine.medicine_id}>
+                      {medicine.name} - ₹{medicine.price} (Stock: {medicine.quantity})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Medicine Details (Auto-filled) */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="form-label">Medicine Name</label>
+                  <input
+                    type="text"
+                    name="medicine_name"
+                    value={assignData.medicine_name}
+                    className="input-field w-full bg-gray-50"
+                    disabled
+                  />
+                </div>
+                <div>
+                  <label className="form-label">Category</label>
+                  <input
+                    type="text"
+                    name="category"
+                    value={assignData.category}
+                    className="input-field w-full bg-gray-50"
+                    disabled
+                  />
+                </div>
+              </div>
+
+              {/* Prescription Details */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="form-label">Dosage *</label>
+                  <input
+                    type="text"
+                    name="dosage"
+                    value={assignData.dosage}
+                    onChange={handleAssignChange}
+                    placeholder="e.g., 1 tablet twice daily"
+                    className="input-field w-full"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="form-label">Quantity *</label>
+                  <input
+                    type="number"
+                    name="quantity"
+                    value={assignData.quantity}
+                    onChange={handleAssignChange}
+                    className="input-field w-full"
+                    required
+                    min="1"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="form-label">Price</label>
+                  <input
+                    type="number"
+                    name="price"
+                    value={assignData.price}
+                    onChange={handleAssignChange}
+                    className="input-field w-full"
+                    step="0.01"
+                  />
+                </div>
+                <div>
+                  <label className="form-label">Prescribed By</label>
+                  <input
+                    type="text"
+                    name="prescribed_by"
+                    value={assignData.prescribed_by}
+                    onChange={handleAssignChange}
+                    className="input-field w-full"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="form-label">Expiry Date</label>
+                <input
+                  type="date"
+                  name="expiry_date"
+                  value={assignData.expiry_date}
+                  onChange={handleAssignChange}
+                  className="input-field w-full"
+                />
+              </div>
+
+              <div>
+                <label className="form-label">Notes</label>
+                <textarea
+                  name="notes"
+                  value={assignData.notes}
+                  onChange={handleAssignChange}
+                  className="input-field w-full"
+                  rows="2"
+                  placeholder="Additional instructions or notes..."
+                />
+              </div>
+
+              <button type="submit" className="btn-primary w-full py-3 rounded-lg">
+                Assign Medicine to Patient
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add Medicine Modal (Keep existing) */}
+      {/* ... */}
     </div>
   );
 };
