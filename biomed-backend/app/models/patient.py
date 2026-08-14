@@ -34,7 +34,7 @@ class Patient(BaseModel):
     medical_notes: Optional[str] = None
     has_biometric: bool = False
     registration_complete: bool = False
-    role: str = "patient"  # "patient" or "admin"
+    role: str = "patient"
     created_at: datetime = datetime.now()
     updated_at: datetime = datetime.now()
     

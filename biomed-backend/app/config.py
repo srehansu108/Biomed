@@ -11,16 +11,21 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     
-    # WebAuthn
-    WEBAUTHN_RP_ID: str = "biomed-auth.netlify.app"
+    # ✅ WebAuthn - Use localhost for development
+    WEBAUTHN_RP_ID: str = "localhost"
     WEBAUTHN_RP_NAME: str = "BioMed Pharmacy"
-    WEBAUTHN_ORIGIN: str = "https://biomed-auth.netlify.app"
+    WEBAUTHN_ORIGIN: str = "http://localhost:3000"
     
     # CORS
-    ALLOWED_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:8000", "https://biomed-2nq9.onrender.com", "https://biomed-auth.netlify.app"]
+    ALLOWED_ORIGINS: List[str] = [
+        "http://localhost:3000",
+        "http://localhost:8000",
+        "https://biomed-2nq9.onrender.com",
+        "https://biomed-auth.netlify.app"
+    ]
     
-    # QR Code
     QR_CODE_EXPIRY_SECONDS: int = 300
+    DEBUG: bool = True
     
     class Config:
         env_file = ".env"

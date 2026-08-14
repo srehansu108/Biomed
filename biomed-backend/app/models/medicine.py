@@ -16,7 +16,7 @@ class PyObjectId(ObjectId):
 
 class Medicine(BaseModel):
     id: Optional[PyObjectId] = Field(default=None, alias="_id")
-    medicine_id: str
+    medicine_id: Optional[str] = None
     name: str
     category: str
     description: Optional[str] = None
@@ -24,11 +24,10 @@ class Medicine(BaseModel):
     price: float = 0.0
     manufacturer: str
     batch_number: str
-    expiry_date: datetime
+    expiry_date: Optional[datetime] = None
     requires_prescription: bool = False
-    is_available: bool = True
-    created_at: datetime = datetime.now()
-    updated_at: datetime = datetime.now()
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     
     class Config:
         arbitrary_types_allowed = True

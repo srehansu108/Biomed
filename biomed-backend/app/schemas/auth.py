@@ -13,18 +13,18 @@ class UserRegister(BaseModel):
     
     @validator('password')
     def validate_password_length(cls, v):
-        """Ensure password doesn't exceed 72 bytes"""
         if len(v.encode('utf-8')) > 72:
             raise ValueError('Password too long. Maximum 72 characters.')
         return v
     
     @validator('phone')
     def validate_phone(cls, v):
-        """Validate phone number format"""
-        v = re.sub(r'\D', '', v)  # Remove non-digit characters
+        v = re.sub(r'\D', '', v)
         if len(v) < 10 or len(v) > 15:
             raise ValueError('Phone number must be between 10 and 15 digits')
         return v
+
+UserRegistration = UserRegister
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -36,6 +36,16 @@ class TokenResponse(BaseModel):
     patient_id: str
     registration_complete: Optional[bool] = False
 
+class UserResponse(BaseModel):
+    id: str
+    patient_id: str
+    full_name: str
+    email: EmailStr
+    phone: str
+    registration_complete: bool = False
+    message: Optional[str] = None
+
+# ✅ WebAuthn Schemas - Make sure these exist
 class WebAuthnRegistrationOptions(BaseModel):
     email: EmailStr
     full_name: Optional[str] = None
@@ -51,6 +61,5 @@ class WebAuthnLoginVerify(BaseModel):
     credential: Dict[str, Any]
     email: EmailStr
 
-# ✅ Add this schema for check-registration-status
 class CheckRegistrationStatus(BaseModel):
     patient_id: str

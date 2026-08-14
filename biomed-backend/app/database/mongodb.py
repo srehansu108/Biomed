@@ -41,76 +41,172 @@ class Database:
     async def create_indexes(self):
         """Create database indexes for performance"""
         try:
-            # ✅ Patients Collection Indexes
-            await self.db.patients.create_index("email", unique=True)
-            await self.db.patients.create_index("phone", unique=True)
-            await self.db.patients.create_index("patient_id", unique=True)
-            await self.db.patients.create_index("has_biometric")
-            await self.db.patients.create_index("registration_complete")  # ✅ ADDED
-            await self.db.patients.create_index("full_name")
+            # ✅ FIX: Safely drop and recreate indexes to avoid conflicts
+            
+            # Patients Collection Indexes
+            patients = self.db.patients
+            
+            # Drop existing indexes if they exist (to avoid conflicts)
+            try:
+                await patients.drop_index("patient_id_1")
+            except:
+                pass  # Index doesn't exist
+            try:
+                await patients.drop_index("email_1")
+            except:
+                pass
+            try:
+                await patients.drop_index("phone_1")
+            except:
+                pass
+            
+            # Create fresh indexes
+            await patients.create_index("patient_id", unique=True)
+            await patients.create_index("email", unique=True)
+            await patients.create_index("phone", unique=True)
+            await patients.create_index("has_biometric")
+            await patients.create_index("registration_complete")
+            await patients.create_index("full_name")
             # Compound index for common queries
-            await self.db.patients.create_index(
+            await patients.create_index(
                 [("has_biometric", 1), ("registration_complete", 1)]
             )
             
             # ✅ Medicines Collection Indexes
-            await self.db.medicines.create_index("medicine_id", unique=True)
-            await self.db.medicines.create_index("name")
-            await self.db.medicines.create_index("batch_number")
-            await self.db.medicines.create_index("category")
-            await self.db.medicines.create_index("quantity")
-            await self.db.medicines.create_index("expiry_date")
+            medicines = self.db.medicines
+            try:
+                await medicines.drop_index("medicine_id_1")
+            except:
+                pass
+            try:
+                await medicines.drop_index("name_1")
+            except:
+                pass
+            try:
+                await medicines.drop_index("batch_number_1")
+            except:
+                pass
+            
+            await medicines.create_index("medicine_id", unique=True)
+            await medicines.create_index("name")
+            await medicines.create_index("batch_number")
+            await medicines.create_index("category")
+            await medicines.create_index("quantity")
+            await medicines.create_index("expiry_date")
             # Compound index for stock queries
-            await self.db.medicines.create_index(
+            await medicines.create_index(
                 [("quantity", 1), ("expiry_date", 1)]
             )
             
             # ✅ Prescriptions Collection Indexes
-            await self.db.prescriptions.create_index("prescription_id", unique=True)
-            await self.db.prescriptions.create_index("patient_id")
-            await self.db.prescriptions.create_index("status")
-            await self.db.prescriptions.create_index("created_at")
+            prescriptions = self.db.prescriptions
+            try:
+                await prescriptions.drop_index("prescription_id_1")
+            except:
+                pass
+            
+            await prescriptions.create_index("prescription_id", unique=True)
+            await prescriptions.create_index("patient_id")
+            await prescriptions.create_index("status")
+            await prescriptions.create_index("created_at")
             # Compound index for patient prescriptions
-            await self.db.prescriptions.create_index(
+            await prescriptions.create_index(
                 [("patient_id", 1), ("status", 1), ("created_at", -1)]
             )
             
             # ✅ WebAuthn Credentials Collection
-            await self.db.webauthn_credentials.create_index("credential_id", unique=True)
-            await self.db.webauthn_credentials.create_index("patient_id", unique=True)
-            await self.db.webauthn_credentials.create_index("last_used")
+            webauthn_creds = self.db.webauthn_credentials
+            try:
+                await webauthn_creds.drop_index("credential_id_1")
+            except:
+                pass
+            try:
+                await webauthn_creds.drop_index("patient_id_1")
+            except:
+                pass
+            
+            await webauthn_creds.create_index("credential_id", unique=True)
+            await webauthn_creds.create_index("patient_id", unique=True)
+            await webauthn_creds.create_index("last_used")
             
             # ✅ WebAuthn Challenges Collection - NEW
-            await self.db.webauthn_challenges.create_index("expires_at", expireAfterSeconds=0)
-            await self.db.webauthn_challenges.create_index("patient_id")
-            await self.db.webauthn_challenges.create_index("email")
-            # TTL index to auto-delete expired challenges (runs every 60 seconds)
-            await self.db.webauthn_challenges.create_index(
+            webauthn_challenges = self.db.webauthn_challenges
+            try:
+                await webauthn_challenges.drop_index("patient_id_1")
+            except:
+                pass
+            try:
+                await webauthn_challenges.drop_index("email_1")
+            except:
+                pass
+            try:
+                await webauthn_challenges.drop_index("ttl_expires_at")
+            except:
+                pass
+            
+            await webauthn_challenges.create_index("patient_id")
+            await webauthn_challenges.create_index("email")
+            # TTL index to auto-delete expired challenges
+            await webauthn_challenges.create_index(
                 "expires_at", 
-                expireAfterSeconds=0,  # MongoDB will delete documents when expires_at < current time
+                expireAfterSeconds=0,
                 name="ttl_expires_at"
             )
             
             # ✅ Sales Collection Indexes
-            await self.db.sales.create_index("sale_id", unique=True)
-            await self.db.sales.create_index("patient_id")
-            await self.db.sales.create_index("created_at")
-            await self.db.sales.create_index("total_amount")
+            sales = self.db.sales
+            try:
+                await sales.drop_index("sale_id_1")
+            except:
+                pass
+            
+            await sales.create_index("sale_id", unique=True)
+            await sales.create_index("patient_id")
+            await sales.create_index("created_at")
+            await sales.create_index("total_amount")
             # Compound index for date range queries
-            await self.db.sales.create_index([("created_at", -1), ("total_amount", 1)])
+            await sales.create_index([("created_at", -1), ("total_amount", 1)])
             
             # ✅ Audit Logs Collection - Auto-expire after 30 days
-            await self.db.audit_logs.create_index("timestamp", expireAfterSeconds=2592000)
-            await self.db.audit_logs.create_index("user_id")
-            await self.db.audit_logs.create_index("action")
-            await self.db.audit_logs.create_index("timestamp")
+            audit_logs = self.db.audit_logs
+            try:
+                await audit_logs.drop_index("timestamp_1")
+            except:
+                pass
+            try:
+                await audit_logs.drop_index("user_id_1")
+            except:
+                pass
+            try:
+                await audit_logs.drop_index("action_1")
+            except:
+                pass
+            
+            await audit_logs.create_index("timestamp", expireAfterSeconds=2592000)
+            await audit_logs.create_index("user_id")
+            await audit_logs.create_index("action")
+            await audit_logs.create_index("timestamp")
             
             # ✅ Inventory Transactions Collection
-            await self.db.inventory_transactions.create_index("medicine_id")
-            await self.db.inventory_transactions.create_index("transaction_date")
-            await self.db.inventory_transactions.create_index("transaction_type")
+            inventory = self.db.inventory_transactions
+            try:
+                await inventory.drop_index("medicine_id_1")
+            except:
+                pass
+            try:
+                await inventory.drop_index("transaction_date_1")
+            except:
+                pass
+            try:
+                await inventory.drop_index("transaction_type_1")
+            except:
+                pass
+            
+            await inventory.create_index("medicine_id")
+            await inventory.create_index("transaction_date")
+            await inventory.create_index("transaction_type")
             # Compound index for stock history
-            await self.db.inventory_transactions.create_index(
+            await inventory.create_index(
                 [("medicine_id", 1), ("transaction_date", -1)]
             )
             

@@ -47,7 +47,7 @@ export const webauthnAPI = {
 // Medicine APIs
 export const medicineAPI = {
   getAll: () => api.get('/medicines'),
-  getAvailable: () => api.get('/medicines/available'),
+  getAvailable: () => api.get('/medicines/available'),  // ✅ This now exists
   getById: (id) => api.get(`/medicines/${id}`),
   create: (data) => api.post('/medicines', data),
   update: (id, data) => api.put(`/medicines/${id}`, data),

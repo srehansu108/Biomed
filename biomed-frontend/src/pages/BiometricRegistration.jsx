@@ -20,16 +20,16 @@ const BiometricRegistration = () => {
 
   useEffect(() => {
     // Detect mobile device
-    const userAgent = navigator.userAgent || navigator.vendor || window.opera
-    const mobile = /android|iphone|ipad|ipod/i.test(userAgent)
-    setIsMobile(mobile)
+    const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+    const mobile = /android|iphone|ipad|ipod/i.test(userAgent);
+    setIsMobile(mobile);
     
     if (/android/i.test(userAgent)) {
-      setDeviceType('android')
+      setDeviceType('android');
     } else if (/iphone|ipad|ipod/i.test(userAgent)) {
-      setDeviceType('ios')
+      setDeviceType('ios');
     } else {
-      setDeviceType('desktop')
+      setDeviceType('desktop');
     }
 
     // Check if we have necessary data
@@ -55,31 +55,34 @@ const BiometricRegistration = () => {
   }, [email, patientId, navigate]);
 
   const handleBiometricRegister = async () => {
-    setStatus('loading');
-    setMessage('');
-    setAttempts(prev => prev + 1);
-    setShowFingerprintGuide(true);
+  setStatus('loading');
+  setMessage('');
+  setAttempts(prev => prev + 1);
+  setShowFingerprintGuide(true);
 
-    try {
-      const response = await registerBiometric(email);
-      
-      if (response.success) {
+  try {
+    const response = await registerBiometric(email, patientId);
+    
+    if (response.success) {
+      // ✅ Store the token
+      if (response.access_token) {
         localStorage.setItem('access_token', response.access_token);
-        localStorage.setItem('patient_id', response.patient_id);
-        localStorage.setItem('registration_complete', 'true');
-        
-        setStatus('success');
-        setShowFingerprintGuide(false);
-        setTimeout(() => navigate('/customer-dashboard'), 2000);
-      } else {
-        throw new Error('Registration failed');
       }
-    } catch (err) {
-      setStatus('error');
+      localStorage.setItem('patient_id', response.patient_id || patientId);
+      localStorage.setItem('registration_complete', 'true');
+      
+      setStatus('success');
       setShowFingerprintGuide(false);
-      setMessage(err.message || 'Biometric registration failed. Please try again.');
+      setTimeout(() => navigate('/customer-dashboard'), 2000);
+    } else {
+      throw new Error(response.message || 'Registration failed');
     }
-  };
+  } catch (err) {
+    setStatus('error');
+    setShowFingerprintGuide(false);
+    setMessage(err.message || 'Biometric registration failed. Please try again.');
+  }
+};
 
   const handleSkip = () => {
     if (isMandatory) {
@@ -102,7 +105,7 @@ const BiometricRegistration = () => {
           '📍 Wait for the confirmation vibration/sound'
         ],
         tips: '💡 Use the finger you normally use to unlock your phone'
-      }
+      };
     } else if (deviceType === 'ios') {
       return {
         title: 'Set Up Face ID or Touch ID',
@@ -113,7 +116,7 @@ const BiometricRegistration = () => {
           '📍 Keep your device at eye level for best results'
         ],
         tips: '💡 Ensure good lighting for Face ID or clean finger for Touch ID'
-      }
+      };
     } else {
       return {
         title: 'Set Up Biometric Authentication',
@@ -123,11 +126,11 @@ const BiometricRegistration = () => {
           '📍 Follow your device\'s biometric setup prompt'
         ],
         tips: '💡 For desktop, use Windows Hello or a security key'
-      }
+      };
     }
-  }
+  };
 
-  const instructions = getRegistrationInstructions()
+  const instructions = getRegistrationInstructions();
 
   return (
     <div className="max-w-md mx-auto px-4 py-8">
@@ -281,9 +284,9 @@ const BiometricRegistration = () => {
             
             <button
               onClick={() => {
-                setStatus('idle')
-                setShowFingerprintGuide(false)
-                setMessage('Setup cancelled')
+                setStatus('idle');
+                setShowFingerprintGuide(false);
+                setMessage('Setup cancelled');
               }}
               className="mt-4 text-sm text-red-500 hover:text-red-700"
             >
@@ -316,8 +319,8 @@ const BiometricRegistration = () => {
             </div>
             <button
               onClick={() => {
-                setStatus('idle')
-                setShowFingerprintGuide(true)
+                setStatus('idle');
+                setShowFingerprintGuide(true);
               }}
               className="btn-primary mt-4 w-full py-3 rounded-xl"
             >
@@ -327,7 +330,8 @@ const BiometricRegistration = () => {
         )}
       </div>
 
-      <style jsx>{`
+      {/* ✅ FIX: Remove 'jsx' attribute - use regular style tag */}
+      <style>{`
         @keyframes fade-in {
           from { opacity: 0; transform: translateY(-10px); }
           to { opacity: 1; transform: translateY(0); }

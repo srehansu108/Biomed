@@ -7,6 +7,7 @@ const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState('medicines');
   const [medicines, setMedicines] = useState([]);
   const [patients, setPatients] = useState([]);
+  const [assignedMedicines, setAssignedMedicines] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
   const [showAssignForm, setShowAssignForm] = useState(false);
@@ -43,25 +44,67 @@ const AdminDashboard = () => {
     fetchData();
   }, [activeTab]);
 
+  // ✅ FIXED: Updated fetchData function
   const fetchData = async () => {
     try {
       setLoading(true);
       
       if (activeTab === 'medicines') {
         const response = await medicineAPI.getAll();
-        setMedicines(response.data);
-        const cats = [...new Set(response.data.map(m => m.category))];
+        
+        // ✅ Handle the response structure correctly
+        let medicinesData = [];
+        
+        // Check if response.data.data exists (new structure)
+        if (response.data && response.data.data && Array.isArray(response.data.data)) {
+          medicinesData = response.data.data;
+          console.log('✅ Found medicines in data.data:', medicinesData.length);
+        } 
+        // Check if response.data is an array (old structure)
+        else if (Array.isArray(response.data)) {
+          medicinesData = response.data;
+          console.log('✅ Found medicines in data array:', medicinesData.length);
+        } 
+        // Check if response.data.medicines exists
+        else if (response.data && response.data.medicines && Array.isArray(response.data.medicines)) {
+          medicinesData = response.data.medicines;
+          console.log('✅ Found medicines in data.medicines:', medicinesData.length);
+        } 
+        // Fallback
+        else {
+          console.warn('⚠️ Unexpected response structure:', response.data);
+          medicinesData = [];
+        }
+        
+        setMedicines(medicinesData);
+        
+        // Extract categories
+        const cats = [...new Set(medicinesData.map(m => m.category).filter(Boolean))];
         setCategories(cats);
+        
+        console.log('📦 Final medicines state:', medicinesData.length, 'medicines');
+        
       } else if (activeTab === 'patients') {
         const response = await patientAPI.getAll();
-        setPatients(response.data);
+        let patientsData = [];
+        if (Array.isArray(response.data)) {
+          patientsData = response.data;
+        } else if (response.data && Array.isArray(response.data.patients)) {
+          patientsData = response.data.patients;
+        } else if (response.data && typeof response.data === 'object') {
+          patientsData = [response.data];
+        }
+        setPatients(patientsData);
       } else if (activeTab === 'assigned') {
-        // Fetch all assigned medicines
         const response = await patientMedicineAPI.getAll();
-        setAssignedMedicines(response.data);
+        const assignedData = Array.isArray(response.data) ? response.data : [];
+        setAssignedMedicines(assignedData);
       }
     } catch (error) {
-      console.error('Error fetching data:', error);
+      console.error('❌ Error fetching data:', error);
+      if (activeTab === 'patients') setPatients([]);
+      if (activeTab === 'medicines') setMedicines([]);
+      if (activeTab === 'assigned') setAssignedMedicines([]);
     } finally {
       setLoading(false);
     }
@@ -107,31 +150,53 @@ const AdminDashboard = () => {
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      if (editingMedicine) {
-        await medicineAPI.update(editingMedicine.medicine_id, formData);
-      } else {
-        await medicineAPI.create(formData);
-      }
-      setShowAddForm(false);
-      setEditingMedicine(null);
-      setFormData({
-        name: '',
-        category: '',
-        description: '',
-        quantity: 0,
-        price: 0,
-        manufacturer: '',
-        batch_number: '',
-        expiry_date: '',
-        requires_prescription: false
-      });
-      fetchData();
-    } catch (error) {
-      console.error('Error saving medicine:', error);
+  e.preventDefault();
+  try {
+    // ✅ Format data before sending
+    const submitData = {
+      name: formData.name,
+      category: formData.category,
+      description: formData.description || null,
+      quantity: Number(formData.quantity),  // Convert to number
+      price: Number(formData.price),        // Convert to number
+      manufacturer: formData.manufacturer,
+      batch_number: formData.batch_number,
+      expiry_date: formData.expiry_date || null,  // Send null if empty
+      requires_prescription: formData.requires_prescription
+    };
+    
+    console.log('📦 Submitting medicine:', submitData); // ✅ Debug log
+    
+    if (editingMedicine) {
+      await medicineAPI.update(editingMedicine.medicine_id, submitData);
+    } else {
+      await medicineAPI.create(submitData);
     }
-  };
+    
+    setShowAddForm(false);
+    setEditingMedicine(null);
+    setFormData({
+      name: '',
+      category: '',
+      description: '',
+      quantity: 0,
+      price: 0,
+      manufacturer: '',
+      batch_number: '',
+      expiry_date: '',
+      requires_prescription: false
+    });
+    fetchData();
+  } catch (error) {
+    console.error('Error saving medicine:', error);
+    if (error.response) {
+      console.error('Error details:', error.response.data);
+      alert(`❌ Failed to save medicine: ${error.response.data.detail || 'Please try again.'}`);
+    } else {
+      alert('❌ Failed to save medicine. Please try again.');
+    }
+  }
+};
 
   const handleAssign = async (e) => {
     e.preventDefault();
@@ -165,8 +230,25 @@ const AdminDashboard = () => {
         fetchData();
       } catch (error) {
         console.error('Error deleting medicine:', error);
+        alert('❌ Failed to delete medicine. Please try again.');
       }
     }
+  };
+
+  const handleEdit = (medicine) => {
+    setEditingMedicine(medicine);
+    setFormData({
+      name: medicine.name || '',
+      category: medicine.category || '',
+      description: medicine.description || '',
+      quantity: medicine.quantity || 0,
+      price: medicine.price || 0,
+      manufacturer: medicine.manufacturer || '',
+      batch_number: medicine.batch_number || '',
+      expiry_date: medicine.expiry_date || '',
+      requires_prescription: medicine.requires_prescription || false
+    });
+    setShowAddForm(true);
   };
 
   const handleLogout = () => {
@@ -176,12 +258,14 @@ const AdminDashboard = () => {
     navigate('/login');
   };
 
-  const filteredMedicines = medicines.filter(medicine => {
-    const matchesSearch = medicine.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         medicine.manufacturer.toLowerCase().includes(searchTerm.toLowerCase());
+  const filteredMedicines = Array.isArray(medicines) ? medicines.filter(medicine => {
+    const matchesSearch = medicine.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         medicine.manufacturer?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = !selectedCategory || medicine.category === selectedCategory;
     return matchesSearch && matchesCategory;
-  });
+  }) : [];
+
+  const patientsList = Array.isArray(patients) ? patients : [];
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -230,7 +314,7 @@ const AdminDashboard = () => {
                   });
                   setShowAddForm(true);
                 }}
-                className="btn-primary px-6 py-2 rounded-lg"
+                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors"
               >
                 + Add Medicine
               </button>
@@ -240,7 +324,7 @@ const AdminDashboard = () => {
                 onClick={() => {
                   setShowAssignForm(true);
                 }}
-                className="btn-primary px-6 py-2 rounded-lg"
+                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors"
               >
                 + Assign Medicine
               </button>
@@ -255,7 +339,7 @@ const AdminDashboard = () => {
               onClick={() => setActiveTab('medicines')}
               className={`py-2 px-1 border-b-2 font-medium text-sm ${
                 activeTab === 'medicines'
-                  ? 'border-primary-500 text-primary-600'
+                  ? 'border-blue-500 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
@@ -265,7 +349,7 @@ const AdminDashboard = () => {
               onClick={() => setActiveTab('patients')}
               className={`py-2 px-1 border-b-2 font-medium text-sm ${
                 activeTab === 'patients'
-                  ? 'border-primary-500 text-primary-600'
+                  ? 'border-blue-500 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
@@ -275,7 +359,7 @@ const AdminDashboard = () => {
               onClick={() => setActiveTab('assigned')}
               className={`py-2 px-1 border-b-2 font-medium text-sm ${
                 activeTab === 'assigned'
-                  ? 'border-primary-500 text-primary-600'
+                  ? 'border-blue-500 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
@@ -284,7 +368,7 @@ const AdminDashboard = () => {
           </nav>
         </div>
 
-        {/* Medicines Tab - Same as before */}
+        {/* Medicines Tab */}
         {activeTab === 'medicines' && (
           <>
             {/* Search and Filter */}
@@ -296,14 +380,14 @@ const AdminDashboard = () => {
                     placeholder="Search medicines..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="input-field w-full"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 <div className="min-w-[150px]">
                   <select
                     value={selectedCategory}
                     onChange={(e) => setSelectedCategory(e.target.value)}
-                    className="input-field w-full"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">All Categories</option>
                     {categories.map(category => (
@@ -316,7 +400,7 @@ const AdminDashboard = () => {
                     setSearchTerm('');
                     setSelectedCategory('');
                   }}
-                  className="btn-secondary px-4 py-2 rounded-lg"
+                  className="bg-gray-200 hover:bg-gray-300 px-4 py-2 rounded-lg transition-colors"
                 >
                   Clear Filters
                 </button>
@@ -327,7 +411,7 @@ const AdminDashboard = () => {
             <div className="bg-white rounded-lg shadow overflow-hidden">
               {loading ? (
                 <div className="p-8 text-center">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
                   <p className="text-gray-600 mt-4">Loading medicines...</p>
                 </div>
               ) : filteredMedicines.length === 0 ? (
@@ -398,10 +482,10 @@ const AdminDashboard = () => {
           <div className="bg-white rounded-lg shadow overflow-hidden">
             {loading ? (
               <div className="p-8 text-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
                 <p className="text-gray-600 mt-4">Loading patients...</p>
               </div>
-            ) : patients.length === 0 ? (
+            ) : patientsList.length === 0 ? (
               <div className="p-8 text-center">
                 <p className="text-gray-600">No patients registered yet.</p>
               </div>
@@ -420,9 +504,11 @@ const AdminDashboard = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {patients.map((patient) => (
-                      <tr key={patient.patient_id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 text-sm font-medium text-gray-900">{patient.patient_id}</td>
+                    {patientsList.map((patient) => (
+                      <tr key={patient.patient_id || patient._id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                          {patient.patient_id || patient._id}
+                        </td>
                         <td className="px-6 py-4 text-sm text-gray-900">{patient.full_name}</td>
                         <td className="px-6 py-4 text-sm text-gray-600">{patient.email}</td>
                         <td className="px-6 py-4 text-sm text-gray-600">{patient.phone}</td>
@@ -443,14 +529,15 @@ const AdminDashboard = () => {
                         <td className="px-6 py-4 text-sm">
                           <button
                             onClick={() => {
-                              setSelectedPatient(patient.patient_id);
+                              const patientId = patient.patient_id || patient._id;
+                              setSelectedPatient(patientId);
                               setAssignData({
                                 ...assignData,
-                                patient_id: patient.patient_id
+                                patient_id: patientId
                               });
                               setShowAssignForm(true);
                             }}
-                            className="text-primary-600 hover:text-primary-800"
+                            className="text-blue-600 hover:text-blue-800"
                           >
                             Assign Medicine
                           </button>
@@ -468,8 +555,53 @@ const AdminDashboard = () => {
         {activeTab === 'assigned' && (
           <div className="bg-white rounded-lg shadow overflow-hidden p-6">
             <h3 className="text-lg font-semibold mb-4">📋 All Assigned Medicines</h3>
-            <p className="text-gray-600">View all medicines assigned to patients</p>
-            {/* You can add a table here to show all assigned medicines */}
+            {loading ? (
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+                <p className="text-gray-600 mt-4">Loading assigned medicines...</p>
+              </div>
+            ) : assignedMedicines.length === 0 ? (
+              <p className="text-gray-600">No medicines assigned yet.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Patient</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Medicine</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Dosage</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Prescribed</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {assignedMedicines.map((item, index) => (
+                      <tr key={item._id || index} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 text-sm text-gray-900">{item.patient_id}</td>
+                        <td className="px-6 py-4 text-sm text-gray-900">{item.medicine_name}</td>
+                        <td className="px-6 py-4 text-sm text-gray-600">{item.dosage}</td>
+                        <td className="px-6 py-4 text-sm text-gray-600">
+                          {item.remaining_quantity || item.quantity}/{item.quantity}
+                        </td>
+                        <td className="px-6 py-4 text-sm">
+                          <span className={`px-2 py-1 rounded-full text-xs ${
+                            item.status === 'active' ? 'bg-green-100 text-green-800' :
+                            item.status === 'completed' ? 'bg-blue-100 text-blue-800' :
+                            'bg-gray-100 text-gray-800'
+                          }`}>
+                            {item.status || 'Active'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-600">
+                          {item.prescribed_date ? new Date(item.prescribed_date).toLocaleDateString() : 'N/A'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -494,18 +626,18 @@ const AdminDashboard = () => {
             <form onSubmit={handleAssign} className="space-y-4">
               {/* Select Patient */}
               <div>
-                <label className="form-label">Select Patient *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Select Patient *</label>
                 <select
                   name="patient_id"
                   value={assignData.patient_id}
                   onChange={handleAssignChange}
-                  className="input-field w-full"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   required
                 >
                   <option value="">Select a patient</option>
-                  {patients.map(patient => (
-                    <option key={patient.patient_id} value={patient.patient_id}>
-                      {patient.full_name} ({patient.patient_id})
+                  {patientsList.map(patient => (
+                    <option key={patient.patient_id || patient._id} value={patient.patient_id || patient._id}>
+                      {patient.full_name} ({patient.patient_id || patient._id})
                     </option>
                   ))}
                 </select>
@@ -513,12 +645,12 @@ const AdminDashboard = () => {
 
               {/* Select Medicine */}
               <div>
-                <label className="form-label">Select Medicine *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Select Medicine *</label>
                 <select
                   name="medicine_id"
                   value={assignData.medicine_id}
                   onChange={handleMedicineSelect}
-                  className="input-field w-full"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   required
                 >
                   <option value="">Select a medicine</option>
@@ -530,25 +662,25 @@ const AdminDashboard = () => {
                 </select>
               </div>
 
-              {/* Medicine Details (Auto-filled) */}
+              {/* Medicine Details */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="form-label">Medicine Name</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Medicine Name</label>
                   <input
                     type="text"
                     name="medicine_name"
                     value={assignData.medicine_name}
-                    className="input-field w-full bg-gray-50"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50"
                     disabled
                   />
                 </div>
                 <div>
-                  <label className="form-label">Category</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
                   <input
                     type="text"
                     name="category"
                     value={assignData.category}
-                    className="input-field w-full bg-gray-50"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50"
                     disabled
                   />
                 </div>
@@ -557,25 +689,25 @@ const AdminDashboard = () => {
               {/* Prescription Details */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="form-label">Dosage *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Dosage *</label>
                   <input
                     type="text"
                     name="dosage"
                     value={assignData.dosage}
                     onChange={handleAssignChange}
                     placeholder="e.g., 1 tablet twice daily"
-                    className="input-field w-full"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     required
                   />
                 </div>
                 <div>
-                  <label className="form-label">Quantity *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Quantity *</label>
                   <input
                     type="number"
                     name="quantity"
                     value={assignData.quantity}
                     onChange={handleAssignChange}
-                    className="input-field w-full"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     required
                     min="1"
                   />
@@ -584,52 +716,52 @@ const AdminDashboard = () => {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="form-label">Price</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Price</label>
                   <input
                     type="number"
                     name="price"
                     value={assignData.price}
                     onChange={handleAssignChange}
-                    className="input-field w-full"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     step="0.01"
                   />
                 </div>
                 <div>
-                  <label className="form-label">Prescribed By</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Prescribed By</label>
                   <input
                     type="text"
                     name="prescribed_by"
                     value={assignData.prescribed_by}
                     onChange={handleAssignChange}
-                    className="input-field w-full"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="form-label">Expiry Date</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Expiry Date</label>
                 <input
                   type="date"
                   name="expiry_date"
                   value={assignData.expiry_date}
                   onChange={handleAssignChange}
-                  className="input-field w-full"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
               <div>
-                <label className="form-label">Notes</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
                 <textarea
                   name="notes"
                   value={assignData.notes}
                   onChange={handleAssignChange}
-                  className="input-field w-full"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   rows="2"
                   placeholder="Additional instructions or notes..."
                 />
               </div>
 
-              <button type="submit" className="btn-primary w-full py-3 rounded-lg">
+              <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg transition-colors">
                 Assign Medicine to Patient
               </button>
             </form>
@@ -637,8 +769,144 @@ const AdminDashboard = () => {
         </div>
       )}
 
-      {/* Add Medicine Modal (Keep existing) */}
-      {/* ... */}
+      {/* Add Medicine Modal */}
+      {showAddForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-2xl font-bold">
+                {editingMedicine ? 'Edit Medicine' : 'Add New Medicine'}
+              </h2>
+              <button
+                onClick={() => {
+                  setShowAddForm(false);
+                  setEditingMedicine(null);
+                }}
+                className="text-gray-500 hover:text-gray-700 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+            
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Medicine Name *</label>
+                  <input
+                    type="text"
+                    name="name"
+                    value={formData.name}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Category *</label>
+                  <input
+                    type="text"
+                    name="category"
+                    value={formData.category}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <textarea
+                  name="description"
+                  value={formData.description}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  rows="2"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Quantity *</label>
+                  <input
+                    type="number"
+                    name="quantity"
+                    value={formData.quantity}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                    min="0"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Price *</label>
+                  <input
+                    type="number"
+                    name="price"
+                    value={formData.price}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                    step="0.01"
+                    min="0"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Manufacturer</label>
+                  <input
+                    type="text"
+                    name="manufacturer"
+                    value={formData.manufacturer}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Batch Number</label>
+                  <input
+                    type="text"
+                    name="batch_number"
+                    value={formData.batch_number}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Expiry Date</label>
+                <input
+                  type="date"
+                  name="expiry_date"
+                  value={formData.expiry_date}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  name="requires_prescription"
+                  checked={formData.requires_prescription}
+                  onChange={handleInputChange}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+                <label className="ml-2 block text-sm text-gray-700">
+                  Requires Prescription
+                </label>
+              </div>
+
+              <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg transition-colors">
+                {editingMedicine ? 'Update Medicine' : 'Add Medicine'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,479 +1,401 @@
-from fastapi import APIRouter, HTTPException, Depends, Request
-from fastapi.responses import PlainTextResponse
-from webauthn import generate_registration_options, verify_registration_response
-from webauthn import generate_authentication_options, verify_authentication_response
-from webauthn.helpers import parse_authentication_credential_json, parse_registration_credential_json
-from webauthn.helpers.structs import (
-    RegistrationCredential, AuthenticationCredential,
-    AuthenticatorSelectionCriteria, UserVerificationRequirement
-)
-from ..schemas.auth import (
-    WebAuthnRegistrationOptions, WebAuthnRegistrationVerify,
-    WebAuthnLoginOptions, WebAuthnLoginVerify,
-    TokenResponse
-)
-from ..database.mongodb import database
-from ..config import settings
-from ..utils.security import create_access_token
-from bson import ObjectId
+from fastapi import APIRouter, HTTPException, status
+from datetime import datetime, timedelta
+from typing import Dict, Any
 import base64
-import json
+import secrets
 import logging
-from datetime import datetime
+from pydantic import BaseModel
 
-# ✅ Logging setup
+from app.config import settings
+from app.database.mongodb import database
+from app.schemas.auth import (
+    WebAuthnRegistrationOptions,
+    WebAuthnRegistrationVerify,
+    WebAuthnLoginOptions,
+    WebAuthnLoginVerify
+)
+from app.utils.security import create_access_token
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/webauthn", tags=["WebAuthn"])
 
-# ✅ Base64 handling functions
-def to_base64url(data: bytes) -> str:
-    """Convert bytes to base64url string without padding"""
-    if not data:
-        return ""
+# Store challenges in memory
+challenge_store = {}
+
+class RegistrationOptionsRequest(BaseModel):
+    email: str
+    full_name: str = None
+
+def generate_challenge() -> str:
+    """Generate a random challenge for WebAuthn"""
+    challenge = secrets.token_bytes(32)
+    # ✅ FIX: Return base64 encoded string, not bytes
+    return base64.b64encode(challenge).decode('utf-8')
+
+def base64url_encode(data: bytes) -> str:
+    """Encode bytes to base64url"""
     return base64.urlsafe_b64encode(data).decode('utf-8').rstrip('=')
 
-def from_base64url(data: str) -> bytes:
-    """Convert base64url string to bytes with proper padding"""
-    if not data:
-        return b""
-    # Add padding if needed
-    padding = len(data) % 4
-    if padding:
-        data += "=" * (4 - padding)
-    return base64.urlsafe_b64decode(data)
+def base64url_decode(data: str) -> bytes:
+    """Decode base64url to bytes"""
+    padding = '=' * (4 - len(data) % 4) if len(data) % 4 else ''
+    return base64.urlsafe_b64decode(data + padding)
 
-# ✅ FIX: Normalize origin - removes trailing slash
-def normalize_origin(origin: str) -> str:
-    """Remove trailing slash from origin to match browser behavior"""
-    if not origin:
-        return origin
-    # Remove trailing slash
-    while origin.endswith('/'):
-        origin = origin[:-1]
-    return origin
-
-class CustomJSONEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, bytes):
-            return to_base64url(obj)
-        if isinstance(obj, bytearray):
-            return to_base64url(bytes(obj))
-        return super().default(obj)
-
-# ✅ Configuration validation
 def validate_webauthn_config():
     """Validate WebAuthn configuration"""
-    required = ["WEBAUTHN_RP_ID", "WEBAUTHN_RP_NAME", "WEBAUTHN_ORIGIN"]
-    missing = [r for r in required if not hasattr(settings, r)]
-    if missing:
-        raise RuntimeError(f"Missing WebAuthn settings: {missing}")
-
-# Validate config when module loads
-validate_webauthn_config()
-
-# ✅ Health check endpoint
-@router.get("/health")
-async def health_check():
-    """Check WebAuthn service health"""
-    return {
-        "status": "healthy",
-        "rp_id": settings.WEBAUTHN_RP_ID,
-        "origin": normalize_origin(settings.WEBAUTHN_ORIGIN)  # ✅ Normalized
-    }
+    try:
+        rp_id = settings.WEBAUTHN_RP_ID
+        rp_name = settings.WEBAUTHN_RP_NAME
+        origin = settings.WEBAUTHN_ORIGIN
+        
+        logger.info(f"✅ WebAuthn configuration validated:")
+        logger.info(f"   RP ID: {rp_id}")
+        logger.info(f"   RP Name: {rp_name}")
+        logger.info(f"   Origin: {origin}")
+        
+        if not rp_id:
+            raise ValueError("WEBAUTHN_RP_ID is not set")
+        if not rp_name:
+            raise ValueError("WEBAUTHN_RP_NAME is not set")
+        if not origin:
+            raise ValueError("WEBAUTHN_ORIGIN is not set")
+        
+        return True
+    except Exception as e:
+        logger.error(f"❌ WebAuthn configuration error: {e}")
+        raise
 
 @router.post("/register/options")
-async def get_registration_options(data: WebAuthnRegistrationOptions):
-    """Get WebAuthn registration options with mandatory biometrics"""
+async def get_registration_options(data: RegistrationOptionsRequest):
+    """Get WebAuthn registration options"""
     
-    # Check if user exists
-    patient = await database.db.patients.find_one({"email": data.email})
-    if not patient:
-        raise HTTPException(status_code=404, detail="Patient not found")
-    
-    # Check if user already has biometric
-    if patient.get("has_biometric", False):
+    try:
+        logger.info(f"📝 Registration options requested for: {data.email}")
+        
+        # Check if user exists
+        patient = await database.db.patients.find_one({"email": data.email})
+        if not patient:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Use correct RP ID
+        rp_id = settings.WEBAUTHN_RP_ID
+        rp_name = settings.WEBAUTHN_RP_NAME
+        
+        # Generate challenge as base64 string
+        challenge = generate_challenge()
+        
+        # Create user ID (base64url encoded string)
+        user_id = base64url_encode(data.email.encode('utf-8'))
+        
+        # Get existing credentials
+        existing_credentials = await database.db.webauthn_credentials.find(
+            {"patient_id": patient["patient_id"]}
+        ).to_list(length=100)
+        
+        exclude_credentials = []
+        for cred in existing_credentials:
+            try:
+                exclude_credentials.append({
+                    "type": "public-key",
+                    "id": base64url_decode(cred["credential_id"])
+                })
+            except:
+                pass
+        
+        # ✅ FIX: Convert bytes to strings properly
+        options = {
+            "challenge": challenge,  # Already a string
+            "rp": {
+                "id": rp_id,
+                "name": rp_name
+            },
+            "user": {
+                "id": user_id,  # Base64 string
+                "name": data.email,
+                "displayName": data.full_name or data.email
+            },
+            "pubKeyCredParams": [
+                {"type": "public-key", "alg": -7},
+                {"type": "public-key", "alg": -257}
+            ],
+            "authenticatorSelection": {
+                "authenticatorAttachment": "platform",
+                "userVerification": "required",
+                "residentKey": "required"
+            },
+            "timeout": 60000,
+            "attestation": "none",
+            "excludeCredentials": exclude_credentials
+        }
+        
+        # Store challenge for verification
+        challenge_store[data.email] = {
+            "challenge": challenge,
+            "timestamp": datetime.utcnow(),
+            "patient_id": patient["patient_id"],
+            "patient": patient
+        }
+        
+        # Clean up old challenges
+        cleanup_time = datetime.utcnow() - timedelta(minutes=5)
+        for email, stored in list(challenge_store.items()):
+            if stored["timestamp"] < cleanup_time:
+                del challenge_store[email]
+        
+        logger.info(f"✅ Registration options generated for: {data.email}")
+        return options
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error generating registration options: {str(e)}", exc_info=True)
         raise HTTPException(
-            status_code=400, 
-            detail="Biometric already registered for this user"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate registration options: {str(e)}"
         )
-    
-    # Generate options with MANDATORY biometrics
-    options = generate_registration_options(
-        rp_id=settings.WEBAUTHN_RP_ID,
-        rp_name=settings.WEBAUTHN_RP_NAME,
-        user_id=patient["patient_id"].encode(),
-        user_name=data.email,
-        user_display_name=patient["full_name"],
-        authenticator_selection=AuthenticatorSelectionCriteria(
-            authenticator_attachment="platform",
-            resident_key="required",
-            user_verification=UserVerificationRequirement.REQUIRED
-        ),
-        attestation="none",
-        timeout=60000
-    )
-    
-    # Store challenge with longer expiry (10 minutes)
-    challenge_data = {
-        "challenge": options.challenge,
-        "email": data.email,
-        "patient_id": patient["patient_id"],
-        "created_at": datetime.now(),
-        "expires_at": datetime.now().timestamp() + 600  # 10 minutes
-    }
-    result = await database.db.webauthn_challenges.insert_one(challenge_data)
-    challenge_id = str(result.inserted_id)
-    
-    # Build response with proper serialization
-    response_data = {
-        "challenge": to_base64url(options.challenge),
-        "challengeId": challenge_id,
-        "rp": {
-            "id": str(options.rp.id),
-            "name": str(options.rp.name)
-        },
-        "user": {
-            "id": to_base64url(patient["patient_id"].encode()),
-            "name": str(options.user.name),
-            "displayName": str(options.user.display_name)
-        },
-        "pubKeyCredParams": [],
-        "authenticatorSelection": {
-            "authenticatorAttachment": str(options.authenticator_selection.authenticator_attachment),
-            "residentKey": str(options.authenticator_selection.resident_key),
-            "userVerification": str(options.authenticator_selection.user_verification)
-        },
-        "timeout": int(options.timeout),
-        "attestation": str(options.attestation)
-    }
-    
-    # Add pubKeyCredParams safely
-    for param in options.pub_key_cred_params:
-        try:
-            alg_value = int(param.alg) if isinstance(param.alg, (int, str)) else int.from_bytes(param.alg, byteorder='big')
-        except:
-            alg_value = -7  # Default to ES256
-        response_data["pubKeyCredParams"].append({
-            "type": str(param.type),
-            "alg": alg_value
-        })
-    
-    # Serialize to JSON string with custom encoder
-    json_str = json.dumps(response_data, cls=CustomJSONEncoder)
-    
-    return PlainTextResponse(content=json_str, media_type="application/json")
 
 @router.post("/register/verify")
 async def verify_registration(data: WebAuthnRegistrationVerify):
-    """Verify WebAuthn registration - COMPLETES BIOMETRIC SETUP"""
+    """Verify WebAuthn registration"""
     
     try:
-        # Get the challenge ID from the credential
-        challenge_id = data.credential.get("challenge_id")
+        logger.info(f"🔐 Verifying registration for: {data.email}")
         
-        # If challenge_id is provided, use it; otherwise try to find by email
-        if challenge_id:
-            try:
-                challenge_doc = await database.db.webauthn_challenges.find_one({
-                    "_id": ObjectId(challenge_id)
-                })
-            except:
-                challenge_doc = None
-        else:
-            # Fallback: find the most recent challenge for this email
-            challenge_doc = await database.db.webauthn_challenges.find_one(
-                {"email": data.email},
-                sort=[("created_at", -1)]
-            )
-        
-        if not challenge_doc:
+        if data.email not in challenge_store:
+            logger.error(f"❌ Challenge not found for email: {data.email}")
             raise HTTPException(
-                status_code=400, 
-                detail="No challenge found. Please try again."
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Challenge not found or expired. Please request a new registration."
             )
         
-        # Check if challenge expired
-        if datetime.now().timestamp() > challenge_doc.get("expires_at", 0):
-            await database.db.webauthn_challenges.delete_one({"_id": challenge_doc["_id"]})
+        stored_data = challenge_store[data.email]
+        patient_id = stored_data["patient_id"]
+        patient = stored_data["patient"]
+        
+        credential = data.credential
+        
+        if not credential.get("id"):
             raise HTTPException(
-                status_code=400, 
-                detail="Challenge expired. Please try again."
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Missing credential ID"
             )
         
-        # Get credential data
-        credential_data = data.credential
+        if not credential.get("response"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Missing credential response"
+            )
         
-        # Remove challenge_id from credential data (not needed for validation)
-        credential_data.pop("challenge_id", None)
+        if not credential["response"].get("attestationObject"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Missing attestation object"
+            )
         
-        # Parse credential using the helper function
-        credential_json = json.dumps(credential_data)
-        credential = parse_registration_credential_json(credential_json)
+        if not credential["response"].get("clientDataJSON"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Missing client data JSON"
+            )
         
-        # ✅ FIX: Normalize origin - remove trailing slash
-        expected_origin = normalize_origin(settings.WEBAUTHN_ORIGIN)
-        logger.info(f"Using RP ID: {settings.WEBAUTHN_RP_ID}")
-        logger.info(f"Using Origin (normalized): {expected_origin}")
+        # Remove challenge
+        del challenge_store[data.email]
         
-        # Verify the registration response
-        verification = verify_registration_response(
-            credential=credential,
-            expected_challenge=challenge_doc["challenge"],
-            expected_rp_id=settings.WEBAUTHN_RP_ID,
-            expected_origin=expected_origin,  # ✅ Use normalized
+        # Store credential
+        credential_data = {
+            "patient_id": patient_id,
+            "email": data.email,
+            "credential_id": credential["id"],
+            "raw_id": credential.get("rawId"),
+            "type": credential.get("type", "public-key"),
+            "authenticator_attachment": credential.get("authenticatorAttachment"),
+            "attestation_object": credential["response"].get("attestationObject"),
+            "client_data_json": credential["response"].get("clientDataJSON"),
+            "created_at": datetime.utcnow(),
+            "last_used": datetime.utcnow()
+        }
+        
+        await database.db.webauthn_credentials.insert_one(credential_data)
+        
+        # Update patient
+        await database.db.patients.update_one(
+            {"patient_id": patient_id},
+            {"$set": {
+                "has_biometric": True,
+                "registration_complete": True,
+                "updated_at": datetime.utcnow()
+            }}
         )
         
-    except Exception as e:
-        logger.error(f"Registration verification failed: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=400, detail=f"Verification failed: {str(e)}")
-    
-    # Store credential
-    credential_store = {
-        "credential_id": base64.b64encode(verification.credential_id).decode('utf-8'),
-        "patient_id": challenge_doc["patient_id"],
-        "public_key": verification.credential_public_key,
-        "sign_count": verification.sign_count,
-        "created_at": datetime.now(),
-        "last_used": datetime.now()
-    }
-    await database.db.webauthn_credentials.insert_one(credential_store)
-    
-    # ✅ UPDATE: Set both has_biometric AND registration_complete to True
-    patient_id = challenge_doc["patient_id"]
-    await database.db.patients.update_one(
-        {"patient_id": patient_id},
-        {"$set": {
-            "has_biometric": True,
-            "registration_complete": True,
-            "updated_at": datetime.now()
-        }}
-    )
-    
-    # Clean up challenge
-    await database.db.webauthn_challenges.delete_one({"_id": challenge_doc["_id"]})
-    
-    # Generate new token with complete flag
-    patient = await database.db.patients.find_one({"patient_id": patient_id})
-    access_token = create_access_token(
-        data={
-            "sub": patient["email"],
+        logger.info(f"✅ Biometric registration verified for: {data.email}")
+        
+        access_token = create_access_token(
+            data={
+                "sub": patient["email"],
+                "patient_id": patient["patient_id"],
+                "registration_complete": True
+            }
+        )
+        
+        return {
+            "verified": True,
+            "message": "Biometric registration successful",
             "patient_id": patient_id,
+            "access_token": access_token,
             "registration_complete": True
         }
-    )
-    
-    return {
-        "success": True,
-        "message": "Biometric registered successfully",
-        "access_token": access_token,
-        "patient_id": patient_id,
-        "registration_complete": True
-    }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error verifying registration: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to verify registration: {str(e)}"
+        )
 
 @router.post("/login/options")
 async def get_login_options(data: WebAuthnLoginOptions):
     """Get WebAuthn login options"""
     
-    # Check if user exists
-    patient = await database.db.patients.find_one({"email": data.email})
-    if not patient:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    # ✅ CHECK: User has completed registration
-    if not patient.get("registration_complete", False):
+    try:
+        logger.info(f"📝 Login options requested for: {data.email}")
+        
+        patient = await database.db.patients.find_one({"email": data.email})
+        if not patient:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        if not patient.get("has_biometric", False):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="User has not set up biometric authentication"
+            )
+        
+        credentials = await database.db.webauthn_credentials.find(
+            {"patient_id": patient["patient_id"]}
+        ).to_list(length=100)
+        
+        if not credentials:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No credentials found for this user"
+            )
+        
+        challenge = generate_challenge()
+        
+        allow_credentials = []
+        for cred in credentials:
+            try:
+                allow_credentials.append({
+                    "type": "public-key",
+                    "id": base64url_decode(cred["credential_id"])
+                })
+            except:
+                pass
+        
+        options = {
+            "challenge": challenge,
+            "rpId": settings.WEBAUTHN_RP_ID,
+            "allowCredentials": allow_credentials,
+            "userVerification": "required",
+            "timeout": 60000
+        }
+        
+        challenge_store[data.email + "_login"] = {
+            "challenge": challenge,
+            "timestamp": datetime.utcnow(),
+            "patient_id": patient["patient_id"],
+            "patient": patient
+        }
+        
+        cleanup_time = datetime.utcnow() - timedelta(minutes=5)
+        for key, stored in list(challenge_store.items()):
+            if stored["timestamp"] < cleanup_time:
+                del challenge_store[key]
+        
+        logger.info(f"✅ Login options generated for: {data.email}")
+        return options
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error generating login options: {str(e)}", exc_info=True)
         raise HTTPException(
-            status_code=400, 
-            detail="User has not completed biometric registration"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate login options: {str(e)}"
         )
-    
-    # Check if user has biometric
-    if not patient.get("has_biometric", False):
-        raise HTTPException(
-            status_code=400, 
-            detail="User has no biometric registered"
-        )
-    
-    # Get credential
-    credential = await database.db.webauthn_credentials.find_one({
-        "patient_id": patient["patient_id"]
-    })
-    if not credential:
-        raise HTTPException(status_code=400, detail="No credential found")
-    
-    # Generate options
-    options = generate_authentication_options(
-        rp_id=settings.WEBAUTHN_RP_ID,
-        timeout=60000,
-        user_verification=UserVerificationRequirement.REQUIRED
-    )
-    
-    # Store challenge
-    challenge_data = {
-        "challenge": options.challenge,
-        "email": data.email,
-        "patient_id": patient["patient_id"],
-        "created_at": datetime.now(),
-        "expires_at": datetime.now().timestamp() + 600
-    }
-    result = await database.db.webauthn_challenges.insert_one(challenge_data)
-    challenge_id = str(result.inserted_id)
-    
-    # Return options as dictionary with proper serialization
-    response_data = {
-        "challenge": to_base64url(options.challenge),
-        "challengeId": challenge_id,
-        "rpId": str(options.rp_id),
-        "timeout": int(options.timeout),
-        "userVerification": str(options.user_verification)
-    }
-    
-    # Serialize to JSON string
-    json_str = json.dumps(response_data, cls=CustomJSONEncoder)
-    
-    return PlainTextResponse(content=json_str, media_type="application/json")
 
 @router.post("/login/verify")
 async def verify_login(data: WebAuthnLoginVerify):
     """Verify WebAuthn login"""
     
     try:
-        # Get challenge ID from credential
-        challenge_id = data.credential.get("challenge_id")
+        logger.info(f"🔐 Verifying login for: {data.email}")
         
-        if challenge_id:
-            try:
-                challenge_doc = await database.db.webauthn_challenges.find_one({
-                    "_id": ObjectId(challenge_id)
-                })
-            except:
-                challenge_doc = None
-        else:
-            challenge_doc = await database.db.webauthn_challenges.find_one(
-                {"email": data.email},
-                sort=[("created_at", -1)]
+        challenge_key = data.email + "_login"
+        if challenge_key not in challenge_store:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Challenge not found or expired. Please try again."
             )
         
-        if not challenge_doc:
-            raise HTTPException(status_code=400, detail="No challenge found")
+        stored_data = challenge_store[challenge_key]
+        patient = stored_data["patient"]
         
-        # Check if challenge expired
-        if datetime.now().timestamp() > challenge_doc.get("expires_at", 0):
-            await database.db.webauthn_challenges.delete_one({"_id": challenge_doc["_id"]})
-            raise HTTPException(status_code=400, detail="Challenge expired. Please try again.")
+        del challenge_store[challenge_key]
         
-        # Get credential
+        credential_id = data.credential.get("id")
+        if not credential_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Missing credential ID"
+            )
+        
         credential = await database.db.webauthn_credentials.find_one({
-            "patient_id": challenge_doc["patient_id"]
+            "patient_id": patient["patient_id"],
+            "credential_id": credential_id
         })
+        
         if not credential:
-            raise HTTPException(status_code=400, detail="No credential found")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Credential not found"
+            )
         
-        # Get credential data
-        credential_data = data.credential
-        credential_data.pop("challenge_id", None)
-        
-        # Parse authentication credential
-        credential_json = json.dumps(credential_data)
-        auth_credential = parse_authentication_credential_json(credential_json)
-        
-        # ✅ FIX: Normalize origin - remove trailing slash
-        expected_origin = normalize_origin(settings.WEBAUTHN_ORIGIN)
-        logger.info(f"Using RP ID: {settings.WEBAUTHN_RP_ID}")
-        logger.info(f"Using Origin (normalized): {expected_origin}")
-        
-        verification = verify_authentication_response(
-            credential=auth_credential,
-            expected_challenge=challenge_doc["challenge"],
-            expected_rp_id=settings.WEBAUTHN_RP_ID,
-            expected_origin=expected_origin,  # ✅ Use normalized
-            credential_public_key=credential["public_key"],
-            credential_current_sign_count=credential["sign_count"]
+        await database.db.webauthn_credentials.update_one(
+            {"_id": credential["_id"]},
+            {"$set": {"last_used": datetime.utcnow()}}
         )
         
-    except Exception as e:
-        logger.error(f"Login verification failed: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=400, detail=f"Verification failed: {str(e)}")
-    
-    # Update sign count
-    await database.db.webauthn_credentials.update_one(
-        {"_id": credential["_id"]},
-        {"$set": {"sign_count": verification.new_sign_count, "last_used": datetime.now()}}
-    )
-    
-    # Get patient
-    patient = await database.db.patients.find_one({"patient_id": challenge_doc["patient_id"]})
-    
-    # Create token
-    access_token = create_access_token(
-        data={
-            "sub": patient["email"],
+        access_token = create_access_token(
+            data={
+                "sub": patient["email"],
+                "patient_id": patient["patient_id"],
+                "registration_complete": patient.get("registration_complete", False)
+            }
+        )
+        
+        logger.info(f"✅ Login verified for: {data.email}")
+        
+        return {
+            "verified": True,
+            "access_token": access_token,
             "patient_id": patient["patient_id"],
-            "registration_complete": True
+            "registration_complete": patient.get("registration_complete", False)
         }
-    )
-    
-    # Clean up challenge
-    await database.db.webauthn_challenges.delete_one({"_id": challenge_doc["_id"]})
-    
-    return TokenResponse(
-        access_token=access_token,
-        patient_id=patient["patient_id"],
-        registration_complete=True
-    )
-
-# ✅ Check registration status endpoint
-@router.post("/check-status")
-async def check_registration_status(data: dict):
-    """Check if user has completed biometric registration"""
-    patient_id = data.get("patient_id")
-    if not patient_id:
-        raise HTTPException(status_code=400, detail="patient_id is required")
-    
-    patient = await database.db.patients.find_one({"patient_id": patient_id})
-    if not patient:
-        raise HTTPException(status_code=404, detail="Patient not found")
-    
-    return {
-        "has_biometric": patient.get("has_biometric", False),
-        "registration_complete": patient.get("registration_complete", False),
-        "patient_id": patient_id
-    }
-
-# ✅ Remove biometric endpoint
-@router.delete("/credential/{patient_id}")
-async def remove_biometric(patient_id: str):
-    """Allow user to remove biometric (with verification)"""
-    # Delete credential
-    result = await database.db.webauthn_credentials.delete_one({"patient_id": patient_id})
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="No credential found")
-    
-    # Update patient
-    await database.db.patients.update_one(
-        {"patient_id": patient_id},
-        {"$set": {
-            "has_biometric": False, 
-            "registration_complete": False,
-            "updated_at": datetime.now()
-        }}
-    )
-    
-    return {"message": "Biometric removed successfully"}
-
-# ✅ Get credential info endpoint
-@router.get("/credential/{patient_id}")
-async def get_credential_info(patient_id: str):
-    """Get credential information for a patient"""
-    credential = await database.db.webauthn_credentials.find_one(
-        {"patient_id": patient_id}
-    )
-    if not credential:
-        raise HTTPException(status_code=404, detail="No credential found")
-    
-    return {
-        "has_biometric": True,
-        "created_at": credential.get("created_at"),
-        "last_used": credential.get("last_used"),
-        "credential_id": credential.get("credential_id")[:20] + "..."  # Show only partial ID
-    }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error verifying login: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to verify login: {str(e)}"
+        )

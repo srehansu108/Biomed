@@ -53,49 +53,47 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-# GZip Middleware - Compress responses
+# GZip Middleware
 app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+# ✅ FIX: CORS - Must be BEFORE other middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3000",
+        "http://localhost:8000",
+        "https://biomed-2nq9.onrender.com",
+        "https://biomed-auth.netlify.app",
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "Accept", "Origin", "X-Requested-With"],
+    expose_headers=["*"],
+    max_age=3600,
+)
 
 # Request Logging Middleware
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     """Log all incoming requests"""
     start_time = time.time()
-    
-    # Log request
     logger.info(f"Request: {request.method} {request.url.path}")
-    
-    # Process request
     response = await call_next(request)
-    
-    # Log response
     process_time = time.time() - start_time
-    logger.info(
-        f"Response: {response.status_code} - {request.method} {request.url.path} "
-        f"({process_time:.3f}s)"
-    )
-    
-    # Add processing time header
+    logger.info(f"Response: {response.status_code} - {request.method} {request.url.path} ({process_time:.3f}s)")
     response.headers["X-Process-Time"] = str(process_time)
     return response
 
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Include routes
+# ✅ Include routes
 app.include_router(auth.router, prefix="/api")
 app.include_router(webauthn.router, prefix="/api")
 app.include_router(patients.router, prefix="/api")
 app.include_router(medicines.router, prefix="/api")
 app.include_router(prescriptions.router, prefix="/api")
 app.include_router(sales.router, prefix="/api")
-app.include_router(patient_medicines.router, prefix="/api")  # ✅ New route
+app.include_router(patient_medicines.router, prefix="/api")
 
 @app.get("/")
 async def root():
@@ -112,7 +110,6 @@ async def health_check():
     """Health check endpoint"""
     try:
         db_status = await database.ping()
-        
         return {
             "status": "healthy" if db_status else "unhealthy",
             "database": "connected" if db_status else "disconnected",
@@ -126,29 +123,3 @@ async def health_check():
             "error": str(e),
             "timestamp": time.time()
         }
-
-# Error handler for 404
-@app.exception_handler(404)
-async def not_found_handler(request: Request, exc):
-    from fastapi.responses import JSONResponse
-    return JSONResponse(
-        status_code=404,
-        content={
-            "detail": "Not Found",
-            "path": request.url.path,
-            "method": request.method
-        }
-    )
-
-# Global exception handler
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc):
-    logger.error(f"Unhandled exception: {exc}", exc_info=True)
-    from fastapi.responses import JSONResponse
-    return JSONResponse(
-        status_code=500,
-        content={
-            "detail": "Internal Server Error",
-            "message": str(exc) if settings.DEBUG else "An error occurred"
-        }
-    )

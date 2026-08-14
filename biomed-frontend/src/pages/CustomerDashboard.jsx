@@ -26,6 +26,7 @@ const CustomerDashboard = () => {
     fetchAllData();
   }, []);
 
+  // ✅ FIXED: Updated fetchAllData function
   const fetchAllData = async () => {
     try {
       setLoading(true);
@@ -40,16 +41,36 @@ const CustomerDashboard = () => {
       const patientResponse = await patientAPI.getById(patientId);
       setPatient(patientResponse.data);
 
-      // Fetch available medicines
+      // ✅ FIX: Handle medicines response structure
       const medicinesResponse = await medicineAPI.getAvailable();
-      setMedicines(medicinesResponse.data);
-      const cats = [...new Set(medicinesResponse.data.map(m => m.category))];
+      let medicinesData = [];
+      
+      if (medicinesResponse.data && medicinesResponse.data.data && Array.isArray(medicinesResponse.data.data)) {
+        medicinesData = medicinesResponse.data.data;
+      } else if (Array.isArray(medicinesResponse.data)) {
+        medicinesData = medicinesResponse.data;
+      } else if (medicinesResponse.data && medicinesResponse.data.medicines && Array.isArray(medicinesResponse.data.medicines)) {
+        medicinesData = medicinesResponse.data.medicines;
+      } else {
+        medicinesData = [];
+      }
+      
+      setMedicines(medicinesData);
+      
+      const cats = [...new Set(medicinesData.map(m => m.category).filter(Boolean))];
       setCategories(cats);
 
       // ✅ Fetch patient's assigned medicines
       try {
         const patientMedicinesResponse = await patientMedicineAPI.getByPatient(patientId);
-        const assignedMedicines = patientMedicinesResponse.data || [];
+        let assignedMedicines = [];
+        
+        if (patientMedicinesResponse.data && Array.isArray(patientMedicinesResponse.data)) {
+          assignedMedicines = patientMedicinesResponse.data;
+        } else if (patientMedicinesResponse.data && patientMedicinesResponse.data.data && Array.isArray(patientMedicinesResponse.data.data)) {
+          assignedMedicines = patientMedicinesResponse.data.data;
+        }
+        
         setPatientMedicines(assignedMedicines);
       } catch (error) {
         console.log('No assigned medicines found');
@@ -59,7 +80,14 @@ const CustomerDashboard = () => {
       // Fetch prescriptions
       try {
         const prescriptionsResponse = await prescriptionAPI.getByPatient(patientId);
-        const allPrescriptions = prescriptionsResponse.data || [];
+        let allPrescriptions = [];
+        
+        if (prescriptionsResponse.data && Array.isArray(prescriptionsResponse.data)) {
+          allPrescriptions = prescriptionsResponse.data;
+        } else if (prescriptionsResponse.data && prescriptionsResponse.data.data && Array.isArray(prescriptionsResponse.data.data)) {
+          allPrescriptions = prescriptionsResponse.data.data;
+        }
+        
         setPrescriptions(allPrescriptions);
       } catch (error) {
         setPrescriptions([]);
@@ -68,22 +96,30 @@ const CustomerDashboard = () => {
       // Fetch purchase history
       try {
         const purchasesResponse = await salesAPI.getByPatient(patientId);
-        const allPurchases = purchasesResponse.data || [];
+        let allPurchases = [];
+        
+        if (purchasesResponse.data && Array.isArray(purchasesResponse.data)) {
+          allPurchases = purchasesResponse.data;
+        } else if (purchasesResponse.data && purchasesResponse.data.data && Array.isArray(purchasesResponse.data.data)) {
+          allPurchases = purchasesResponse.data.data;
+        }
+        
         setPurchases(allPurchases);
       } catch (error) {
         setPurchases([]);
       }
 
       // Calculate stats
-      const activePrescriptions = prescriptions.filter(p => p.status === 'active');
-      const totalSpent = purchases.reduce((sum, p) => sum + (p.total_amount || 0), 0);
+      const activePrescriptions = (prescriptions || []).filter(p => p.status === 'active');
+      const totalSpent = (purchases || []).reduce((sum, p) => sum + (p.total_amount || 0), 0);
+      const assignedActive = (patientMedicines || []).filter(m => m.status === 'active' && m.remaining_quantity > 0);
 
       setStats({
-        totalPrescriptions: prescriptions.length,
-        totalPurchases: purchases.length,
+        totalPrescriptions: (prescriptions || []).length,
+        totalPurchases: (purchases || []).length,
         activePrescriptions: activePrescriptions.length,
         totalSpent: totalSpent,
-        assignedMedicines: patientMedicines.filter(m => m.status === 'active' && m.remaining_quantity > 0).length
+        assignedMedicines: assignedActive.length
       });
 
     } catch (error) {
@@ -123,13 +159,14 @@ const CustomerDashboard = () => {
     }
   };
 
-  const filteredMedicines = medicines.filter(medicine => {
-    const matchesSearch = medicine.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         medicine.manufacturer.toLowerCase().includes(searchTerm.toLowerCase());
+  // ✅ FIX: Ensure medicines is always an array
+  const filteredMedicines = Array.isArray(medicines) ? medicines.filter(medicine => {
+    const matchesSearch = medicine.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         medicine.manufacturer?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = !selectedCategory || medicine.category === selectedCategory;
     const matchesPrescription = !showPrescriptionOnly || medicine.requires_prescription;
     return matchesSearch && matchesCategory && matchesPrescription;
-  });
+  }) : [];
 
   if (loading) {
     return (
@@ -252,7 +289,7 @@ const CustomerDashboard = () => {
           </div>
         </div>
 
-        {/* ✅ Assigned Medicines Section - NEW */}
+        {/* ✅ Assigned Medicines Section */}
         {patientMedicines.filter(m => m.status === 'active' && m.remaining_quantity > 0).length > 0 && (
           <div className="bg-white rounded-xl shadow p-6 mb-8">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">💊 Your Prescribed Medicines</h2>
