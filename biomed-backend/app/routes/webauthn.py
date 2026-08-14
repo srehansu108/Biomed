@@ -30,7 +30,6 @@ class RegistrationOptionsRequest(BaseModel):
 def generate_challenge() -> str:
     """Generate a random challenge for WebAuthn"""
     challenge = secrets.token_bytes(32)
-    # ✅ FIX: Return base64 encoded string, not bytes
     return base64.b64encode(challenge).decode('utf-8')
 
 def base64url_encode(data: bytes) -> str:
@@ -73,7 +72,6 @@ async def get_registration_options(data: RegistrationOptionsRequest):
     try:
         logger.info(f"📝 Registration options requested for: {data.email}")
         
-        # Check if user exists
         patient = await database.db.patients.find_one({"email": data.email})
         if not patient:
             raise HTTPException(
@@ -81,17 +79,12 @@ async def get_registration_options(data: RegistrationOptionsRequest):
                 detail="User not found"
             )
         
-        # Use correct RP ID
         rp_id = settings.WEBAUTHN_RP_ID
         rp_name = settings.WEBAUTHN_RP_NAME
         
-        # Generate challenge as base64 string
         challenge = generate_challenge()
-        
-        # Create user ID (base64url encoded string)
         user_id = base64url_encode(data.email.encode('utf-8'))
         
-        # Get existing credentials
         existing_credentials = await database.db.webauthn_credentials.find(
             {"patient_id": patient["patient_id"]}
         ).to_list(length=100)
@@ -106,15 +99,14 @@ async def get_registration_options(data: RegistrationOptionsRequest):
             except:
                 pass
         
-        # ✅ FIX: Convert bytes to strings properly
         options = {
-            "challenge": challenge,  # Already a string
+            "challenge": challenge,
             "rp": {
                 "id": rp_id,
                 "name": rp_name
             },
             "user": {
-                "id": user_id,  # Base64 string
+                "id": user_id,
                 "name": data.email,
                 "displayName": data.full_name or data.email
             },
@@ -132,7 +124,6 @@ async def get_registration_options(data: RegistrationOptionsRequest):
             "excludeCredentials": exclude_credentials
         }
         
-        # Store challenge for verification
         challenge_store[data.email] = {
             "challenge": challenge,
             "timestamp": datetime.utcnow(),
@@ -140,7 +131,6 @@ async def get_registration_options(data: RegistrationOptionsRequest):
             "patient": patient
         }
         
-        # Clean up old challenges
         cleanup_time = datetime.utcnow() - timedelta(minutes=5)
         for email, stored in list(challenge_store.items()):
             if stored["timestamp"] < cleanup_time:
@@ -166,7 +156,6 @@ async def verify_registration(data: WebAuthnRegistrationVerify):
         logger.info(f"🔐 Verifying registration for: {data.email}")
         
         if data.email not in challenge_store:
-            logger.error(f"❌ Challenge not found for email: {data.email}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Challenge not found or expired. Please request a new registration."
@@ -178,34 +167,14 @@ async def verify_registration(data: WebAuthnRegistrationVerify):
         
         credential = data.credential
         
-        if not credential.get("id"):
+        if not credential.get("id") or not credential.get("response"):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Missing credential ID"
+                detail="Invalid credential data"
             )
         
-        if not credential.get("response"):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Missing credential response"
-            )
-        
-        if not credential["response"].get("attestationObject"):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Missing attestation object"
-            )
-        
-        if not credential["response"].get("clientDataJSON"):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Missing client data JSON"
-            )
-        
-        # Remove challenge
         del challenge_store[data.email]
         
-        # Store credential
         credential_data = {
             "patient_id": patient_id,
             "email": data.email,
@@ -221,7 +190,6 @@ async def verify_registration(data: WebAuthnRegistrationVerify):
         
         await database.db.webauthn_credentials.insert_one(credential_data)
         
-        # Update patient
         await database.db.patients.update_one(
             {"patient_id": patient_id},
             {"$set": {
@@ -230,8 +198,6 @@ async def verify_registration(data: WebAuthnRegistrationVerify):
                 "updated_at": datetime.utcnow()
             }}
         )
-        
-        logger.info(f"✅ Biometric registration verified for: {data.email}")
         
         access_token = create_access_token(
             data={
@@ -290,14 +256,20 @@ async def get_login_options(data: WebAuthnLoginOptions):
         
         challenge = generate_challenge()
         
+        # ✅ FIX: Properly handle allow_credentials as base64 strings
         allow_credentials = []
         for cred in credentials:
             try:
+                # Get the credential_id as a base64url string
+                cred_id = cred["credential_id"]
+                # Decode to bytes, then re-encode as base64url for the response
+                decoded = base64url_decode(cred_id)
                 allow_credentials.append({
                     "type": "public-key",
-                    "id": base64url_decode(cred["credential_id"])
+                    "id": base64url_encode(decoded)  # ✅ Return as base64url string
                 })
-            except:
+            except Exception as e:
+                logger.warning(f"Error processing credential: {e}")
                 pass
         
         options = {

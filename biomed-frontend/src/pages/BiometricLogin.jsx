@@ -18,11 +18,9 @@ const BiometricLogin = () => {
     const detectDevice = () => {
       const userAgent = navigator.userAgent || navigator.vendor || window.opera
       
-      // Check if mobile
       const mobile = /android|iphone|ipad|ipod/i.test(userAgent)
       setIsMobile(mobile)
       
-      // Detect specific device
       if (/android/i.test(userAgent)) {
         setDeviceType('android')
       } else if (/iphone|ipad|ipod/i.test(userAgent)) {
@@ -33,13 +31,11 @@ const BiometricLogin = () => {
         setDeviceType('desktop')
       }
       
-      // Check if WebAuthn is supported
       const isWebAuthnSupported = 'PublicKeyCredential' in window
       if (!isWebAuthnSupported) {
         setErrorMessage('Your browser does not support biometric authentication. Please use a modern browser.')
       }
       
-      // Check if device has biometric hardware
       if (isWebAuthnSupported && PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) {
         PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
           .then(available => {
@@ -126,7 +122,7 @@ const BiometricLogin = () => {
         setShowBiometricGuide(false)
         setTimeout(() => navigate('/customer-dashboard'), 1500)
       } else {
-        throw new Error('Authentication failed')
+        throw new Error(response.message || 'Authentication failed')
       }
     } catch (error) {
       console.error('Biometric login error:', error)
@@ -164,7 +160,6 @@ const BiometricLogin = () => {
     navigate('/login')
   }
 
-  // Get instructions based on device
   const instructions = getBiometricInstructions()
 
   return (
@@ -177,7 +172,6 @@ const BiometricLogin = () => {
 
         {status === 'idle' && (
           <>
-            {/* Device detection banner */}
             {isMobile && (
               <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-xl mb-6 border border-blue-100">
                 <div className="flex items-center justify-center gap-2">
@@ -192,7 +186,6 @@ const BiometricLogin = () => {
               </div>
             )}
 
-            {/* Biometric Info Banner */}
             <div className="bg-gradient-to-br from-primary-50 to-primary-100 p-6 rounded-xl mb-6">
               <div className="text-6xl mb-3">
                 {isMobile ? '👆' : '🔑'}
@@ -210,7 +203,6 @@ const BiometricLogin = () => {
               )}
             </div>
 
-            {/* Email Input */}
             <div className="mb-4 text-left">
               <label className="form-label text-sm font-medium text-gray-700">
                 Email Address *
@@ -233,7 +225,6 @@ const BiometricLogin = () => {
               </p>
             </div>
 
-            {/* Remember Email Checkbox */}
             <div className="flex items-center mb-4 text-left">
               <input
                 type="checkbox"
@@ -297,7 +288,6 @@ const BiometricLogin = () => {
               Use email & password instead
             </button>
 
-            {/* Device Info */}
             {isMobile && (
               <div className="mt-6 pt-4 border-t border-gray-200">
                 <p className="text-xs text-gray-400 flex items-center justify-center gap-2">
@@ -329,7 +319,6 @@ const BiometricLogin = () => {
               {deviceType === 'android' ? 'Waiting for fingerprint...' : 'Waiting for biometric...'}
             </p>
             
-            {/* Biometric Instructions */}
             {showBiometricGuide && (
               <div className="mt-4 bg-blue-50 border border-blue-200 rounded-xl p-4 text-left animate-fade-in">
                 <h4 className="font-medium text-blue-800 mb-2">
@@ -353,7 +342,6 @@ const BiometricLogin = () => {
               {authLoading ? 'Processing your request...' : 'Please authenticate on your device'}
             </p>
             
-            {/* Cancel button during loading */}
             <button
               onClick={() => {
                 setStatus('idle')
@@ -418,8 +406,8 @@ const BiometricLogin = () => {
         )}
       </div>
 
-      {/* CSS Animations */}
-      <style jsx>{`
+      {/* ✅ FIX: Removed 'jsx' attribute */}
+      <style>{`
         @keyframes fade-in {
           from { opacity: 0; transform: translateY(-10px); }
           to { opacity: 1; transform: translateY(0); }

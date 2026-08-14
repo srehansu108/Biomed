@@ -137,11 +137,19 @@ export const useWebAuthn = () => {
       });
 
       setLoading(false);
-      return {
-        success: true,
-        ...verification.data,
-        patient_id: patientId
-      };
+      
+      // ✅ FIX: Return proper response structure
+      if (verification.data && verification.data.verified) {
+        return {
+          success: true,
+          access_token: verification.data.access_token,
+          patient_id: verification.data.patient_id || patientId,
+          registration_complete: verification.data.registration_complete || false,
+          message: verification.data.message || 'Registration successful'
+        };
+      } else {
+        throw new Error(verification.data?.message || 'Verification failed');
+      }
     } catch (err) {
       console.error('Biometric registration error:', err);
       setError(err.message || 'Biometric registration failed');
@@ -169,7 +177,7 @@ export const useWebAuthn = () => {
       // ✅ FIX: Use correct RP ID
       const rpId = getRPId();
 
-      // Step 2: Get credential using WebAuthn API
+      // Step 2: Build public key request
       const publicKey = {
         challenge: base64UrlToBuffer(options.challenge),
         rpId: options.rpId || rpId,
@@ -185,6 +193,7 @@ export const useWebAuthn = () => {
         }));
       }
 
+      // Step 3: Get credential using WebAuthn API
       const credential = await navigator.credentials.get({
         publicKey: publicKey,
       });
@@ -193,7 +202,7 @@ export const useWebAuthn = () => {
         throw new Error('Failed to get credential');
       }
 
-      // Step 3: Prepare credential for verification
+      // Step 4: Prepare credential for verification
       const credentialData = {
         id: credential.id,
         rawId: bufferToBase64Url(credential.rawId),
@@ -208,17 +217,25 @@ export const useWebAuthn = () => {
         },
       };
 
-      // Step 4: Verify with backend
+      // Step 5: Verify with backend
       const verification = await webauthnAPI.verifyLogin({
         credential: credentialData,
         email: email,
       });
 
       setLoading(false);
-      return {
-        success: true,
-        ...verification.data
-      };
+      
+      // ✅ FIX: Properly return the response with 'success' flag
+      if (verification.data && verification.data.verified) {
+        return {
+          success: true,
+          access_token: verification.data.access_token,
+          patient_id: verification.data.patient_id,
+          registration_complete: verification.data.registration_complete || false
+        };
+      } else {
+        throw new Error(verification.data?.message || 'Verification failed');
+      }
     } catch (err) {
       console.error('Biometric login error:', err);
       setError(err.message || 'Biometric login failed');
