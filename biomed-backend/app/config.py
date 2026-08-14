@@ -12,9 +12,9 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     
     # ✅ WebAuthn - Use localhost for development
-    WEBAUTHN_RP_ID: str = "localhost"
+    WEBAUTHN_RP_ID: str = "biomed-auth.netlify.app"
     WEBAUTHN_RP_NAME: str = "BioMed Pharmacy"
-    WEBAUTHN_ORIGIN: str = "http://localhost:3000"
+    WEBAUTHN_ORIGIN: str = "https://biomed-auth.netlify.app/"
     
     # CORS
     ALLOWED_ORIGINS: List[str] = [
